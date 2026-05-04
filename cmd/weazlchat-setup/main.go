@@ -201,7 +201,7 @@ func askString(reader *bufio.Reader, label, def string) string {
 func urlHelp(providerType string) string {
 	switch providerType {
 	case "vllm":
-		return "Enter the base vLLM server URL only, without /v1. Example: http://localhost:8000 or http://localhost:8000"
+		return "Enter the base vLLM server URL only, without /v1. Example: http://localhost:8000"
 	case "ollama":
 		return "Enter the base Ollama server URL only, without /api. Example: http://localhost:11434"
 	default:

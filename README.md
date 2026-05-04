@@ -4,7 +4,7 @@ WeazlChat is a private local-first AI chat TUI for vLLM and Ollama servers.
 
 ## Defaults
 
-On first launch, WeazlChat writes `~/.config/weazlchat/config.json` with:
+On first launch, WeazlChat writes `~/.config/weazlchat/config.json` with local defaults:
 
 - `local-vllm`: `http://localhost:8000`
 - model: `local-model`
