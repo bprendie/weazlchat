@@ -29,30 +29,32 @@ const (
 )
 
 type model struct {
-	cfg        config.Config
-	cfgPath    string
-	store      *storage.Store
-	styles     styles
-	mode       mode
-	width      int
-	height     int
-	input      textinput.Model
-	viewport   viewport.Model
-	sessions   list.Model
-	workspaces list.Model
-	session    storage.Session
-	messages   []storage.Message
-	err        string
-	status     string
-	thinking   bool
-	tick       int
-	stream     <-chan streamEvent
-	streamText string
-	streamAt   time.Time
-	reqIn      int
-	reqOut     int
-	pasteText  string
-	pasteLines int
+	cfg          config.Config
+	cfgPath      string
+	store        *storage.Store
+	styles       styles
+	mode         mode
+	width        int
+	height       int
+	input        textinput.Model
+	viewport     viewport.Model
+	sessions     list.Model
+	workspaces   list.Model
+	session      storage.Session
+	messages     []storage.Message
+	err          string
+	status       string
+	thinking     bool
+	tick         int
+	stream       <-chan streamEvent
+	streamText   string
+	streamAt     time.Time
+	reqIn        int
+	reqOut       int
+	pasteText    string
+	pasteLines   int
+	historyIdx   int
+	historyDraft string
 }
 
 type streamEvent struct {
@@ -163,6 +165,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+d":
 			if m.mode == modeSessions {
 				return m.deleteSelectedSession()
+			}
+		case "pgup":
+			if m.mode == modeChat {
+				m.viewport.PageUp()
+				return m, nil
+			}
+		case "pgdown":
+			if m.mode == modeChat {
+				m.viewport.PageDown()
+				return m, nil
+			}
+		case "home":
+			if m.mode == modeChat {
+				m.viewport.GotoTop()
+				return m, nil
+			}
+		case "end":
+			if m.mode == modeChat {
+				m.viewport.GotoBottom()
+				return m, nil
 			}
 		case "esc":
 			if m.mode == modeSessions || m.mode == modeWorkspace {
@@ -322,6 +344,8 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		m.input.Reset()
 		m.pasteText = ""
 		m.pasteLines = 0
+		m.historyIdx = 0
+		m.historyDraft = ""
 		if err := m.store.AddMessage(m.session.ID, "user", prompt); err != nil {
 			m.err = err.Error()
 			return m, nil
@@ -378,6 +402,8 @@ func (m model) newSession() (tea.Model, tea.Cmd) {
 	}
 	m.session = sess
 	m.messages = nil
+	m.historyIdx = 0
+	m.historyDraft = ""
 	m.mode = modeChat
 	m.status = fmt.Sprintf("%s %s", p.Type, p.Model)
 	m.renderMessages()
@@ -392,6 +418,8 @@ func (m model) loadSession(sess storage.Session) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.messages = msgs
+	m.historyIdx = 0
+	m.historyDraft = ""
 	m.mode = modeChat
 	m.status = "resumed " + sess.Title
 	m.input.Focus()
@@ -469,6 +497,10 @@ func (m model) handleChatKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		return m, nil, true
 	}
 	switch msg.String() {
+	case "up":
+		return m.recallHistory(-1), nil, true
+	case "down":
+		return m.recallHistory(1), nil, true
 	case "backspace", "ctrl+h":
 		if m.pasteText != "" && m.input.Value() == "" {
 			m.pasteText = ""
@@ -488,6 +520,44 @@ func (m model) handleChatKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	return m, nil, false
 }
 
+func (m model) recallHistory(delta int) model {
+	history := m.userPrompts()
+	if len(history) == 0 {
+		return m
+	}
+	if m.historyIdx == 0 {
+		m.historyDraft = m.input.Value()
+	}
+	next := m.historyIdx + delta
+	if next < -len(history) {
+		next = -len(history)
+	}
+	if next > 0 {
+		next = 0
+	}
+	m.historyIdx = next
+	if m.historyIdx == 0 {
+		m.input.SetValue(m.historyDraft)
+		m.historyDraft = ""
+		return m
+	}
+	m.pasteText = ""
+	m.pasteLines = 0
+	m.input.SetValue(history[len(history)+m.historyIdx])
+	m.input.CursorEnd()
+	return m
+}
+
+func (m model) userPrompts() []string {
+	prompts := make([]string, 0, len(m.messages))
+	for _, msg := range m.messages {
+		if msg.Role == "user" {
+			prompts = append(prompts, msg.Content)
+		}
+	}
+	return prompts
+}
+
 func (m *model) addPaste(s string) {
 	if s == "" {
 		return
@@ -498,6 +568,8 @@ func (m *model) addPaste(s string) {
 		m.pasteText += "\n" + s
 	}
 	m.pasteLines = countLines(m.pasteText)
+	m.historyIdx = 0
+	m.historyDraft = ""
 	m.status = fmt.Sprintf("captured paste: %d lines", m.pasteLines)
 }
 
@@ -620,7 +692,7 @@ func (m model) helpText() string {
 	if m.mode == modeSessions {
 		return "enter resume | ctrl+d delete session | esc back | ctrl+c quit"
 	}
-	return "enter send/select | ctrl+n new | ctrl+r sessions | ctrl+s save workspace | ctrl+w saves | esc back | ctrl+c quit"
+	return "enter send/select | up/down history | pgup/pgdn scroll | ctrl+r sessions | ctrl+s save | ctrl+c quit"
 }
 
 func ansiHeader() string {

@@ -39,6 +39,9 @@ The first run asks you to create a local history password. Session history and w
 ## Keys
 
 - `enter`: send message or select session
+- `up` / `down`: recall previous prompts in the current session
+- `pgup` / `pgdown`: scroll chat history
+- `home` / `end`: jump to top or bottom of chat history
 - `ctrl+n`: new session
 - `ctrl+r`: resume from session history
 - `ctrl+d`: delete selected session from session history
@@ -46,3 +49,9 @@ The first run asks you to create a local history password. Session history and w
 - `ctrl+w`: list workspace saves
 - `esc`: back to chat
 - `ctrl+c`: quit
+
+## Paste And Copy
+
+Large pasted blocks are stored as the full prompt payload but shown compactly in the input bar as `[PASTED n lines]`.
+
+The TUI does not capture the mouse, so normal terminal highlight/copy works in the chat viewport. Use the keyboard scroll keys above when reviewing longer conversations.
