@@ -15,10 +15,9 @@ type rgb struct {
 }
 
 var logoStops = []rgb{
-	hexRGB(0xF25D94),
+	hexRGB(0xFF5FA2),
+	hexRGB(0xD75DFF),
 	hexRGB(0x7D56F4),
-	hexRGB(0x04B575),
-	hexRGB(0xF7D774),
 }
 
 func gradientLogo(s string) string {
@@ -38,7 +37,6 @@ func gradientLogo(s string) string {
 				continue
 			}
 			t := float64(x) / float64(width-1)
-			t = math.Mod(t+(float64(y)*0.08), 1)
 			color := sampleGradient(t, logoStops)
 			out.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(string(r)))
 		}
