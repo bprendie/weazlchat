@@ -18,6 +18,14 @@ The endpoint and model are read from config at runtime, not hardcoded into the c
 go run ./cmd/weazlchat
 ```
 
+## Install
+
+```sh
+./scripts/install.sh
+```
+
+The installer builds `weazlchat`, places it in `~/.weazlchat/bin`, and adds that directory to your shell `PATH` when it is not already present.
+
 The first run asks you to create a local history password. Session history and workspace saves are stored in SQLite with a bcrypt-protected vault and AES-GCM encrypted payloads.
 
 ## Keys
