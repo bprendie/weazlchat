@@ -45,11 +45,18 @@ type model struct {
 	status     string
 	thinking   bool
 	tick       int
+	stream     <-chan streamEvent
+	streamText string
+	streamAt   time.Time
+	reqIn      int
+	reqOut     int
 }
 
-type responseMsg struct {
-	content string
-	err     error
+type streamEvent struct {
+	chunk string
+	usage llm.Usage
+	err   error
+	done  bool
 }
 
 type tickMsg time.Time
@@ -60,7 +67,7 @@ type sessionItem struct {
 
 func (i sessionItem) Title() string { return i.session.Title }
 func (i sessionItem) Description() string {
-	return fmt.Sprintf("%s / %s", i.session.Provider, i.session.Model)
+	return fmt.Sprintf("%s / %s   in %d / out %d", i.session.Provider, i.session.Model, i.session.InputTokens, i.session.OutputTokens)
 }
 func (i sessionItem) FilterValue() string { return i.session.Title }
 
@@ -151,20 +158,48 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			return m.handleEnter()
 		}
-	case responseMsg:
+	case streamEvent:
+		if msg.chunk != "" {
+			m.streamText += msg.chunk
+			m.reqOut = estimateTokens(m.streamText)
+			m.renderMessages()
+		}
+		if !msg.done {
+			return m, waitStream(m.stream)
+		}
 		m.thinking = false
+		m.stream = nil
 		if msg.err != nil {
 			m.err = msg.err.Error()
 			m.status = "request failed"
+			m.renderMessages()
 			return m, nil
 		}
-		if err := m.store.AddMessage(m.session.ID, "assistant", msg.content); err != nil {
+		inputTokens := msg.usage.InputTokens
+		outputTokens := msg.usage.OutputTokens
+		if inputTokens == 0 {
+			inputTokens = m.reqIn
+		}
+		if outputTokens == 0 {
+			outputTokens = max(1, estimateTokens(m.streamText))
+		}
+		if err := m.store.AddMessage(m.session.ID, "assistant", strings.TrimSpace(m.streamText)); err != nil {
 			m.err = err.Error()
 			return m, nil
 		}
+		if err := m.store.AddSessionTokens(m.session.ID, inputTokens, outputTokens); err != nil {
+			m.err = err.Error()
+			return m, nil
+		}
+		m.session.InputTokens += inputTokens
+		m.session.OutputTokens += outputTokens
 		m.messages, _ = m.store.Messages(m.session.ID)
+		m.streamText = ""
+		m.reqIn = 0
+		m.reqOut = 0
 		m.renderMessages()
 		m.status = "ready"
+		return m, nil
 	case tickMsg:
 		if m.thinking {
 			m.tick++
@@ -211,7 +246,7 @@ func (m model) View() string {
 		if m.thinking {
 			input = m.thinkingView()
 		}
-		body = m.viewport.View() + "\n" + m.styles.input.Width(max(20, m.width-6)).Render(input)
+		body = m.viewport.View() + "\n" + m.metricsView() + "\n" + m.styles.input.Width(max(20, m.width-6)).Render(input)
 	}
 	help := m.styles.help.Render(m.helpText())
 	return m.styles.frame.Width(m.width).Height(m.height).Render(strings.Join([]string{header, status, body, help}, "\n"))
@@ -289,9 +324,15 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		m.messages = history
 		m.renderMessages()
 		m.thinking = true
+		m.streamText = ""
+		m.streamAt = time.Now()
+		m.reqIn = estimateMessages(history)
+		m.reqOut = 0
 		m.err = ""
-		m.status = "thinking"
-		return m, tea.Batch(m.complete(prompt, history[:len(history)-1]), tea.Tick(110*time.Millisecond, func(t time.Time) tea.Msg { return tickMsg(t) }))
+		m.status = "streaming"
+		ch := make(chan streamEvent, 64)
+		m.stream = ch
+		return m, tea.Batch(m.startStream(ch, prompt, history[:len(history)-1]), waitStream(ch), tea.Tick(110*time.Millisecond, func(t time.Time) tea.Msg { return tickMsg(t) }))
 	}
 	return m, nil
 }
@@ -406,11 +447,27 @@ func (m *model) saveWorkspace() {
 	m.err = ""
 }
 
-func (m model) complete(prompt string, history []storage.Message) tea.Cmd {
+func (m model) startStream(ch chan<- streamEvent, prompt string, history []storage.Message) tea.Cmd {
 	return func() tea.Msg {
-		client := llm.New(m.cfg.Active())
-		content, err := client.Complete(context.Background(), history, prompt)
-		return responseMsg{content: content, err: err}
+		go func() {
+			defer close(ch)
+			client := llm.New(m.cfg.Active())
+			usage, err := client.Stream(context.Background(), history, prompt, func(delta string) {
+				ch <- streamEvent{chunk: delta}
+			})
+			ch <- streamEvent{usage: usage, err: err, done: true}
+		}()
+		return nil
+	}
+}
+
+func waitStream(ch <-chan streamEvent) tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return msg
 	}
 }
 
@@ -439,6 +496,16 @@ func (m *model) renderMessages() {
 			b.WriteString("\n\n")
 		}
 	}
+	if m.thinking {
+		b.WriteString(m.styles.assistant.Render("ai"))
+		b.WriteString("\n")
+		if m.streamText == "" {
+			b.WriteString(m.thinkingView())
+		} else {
+			b.WriteString(m.streamText)
+		}
+		b.WriteString("\n\n")
+	}
 	m.viewport.SetContent(b.String())
 	m.viewport.GotoBottom()
 }
@@ -447,6 +514,24 @@ func (m model) thinkingView() string {
 	frames := []string{"<*>", "<+>", "<x>", "<#>", "<@>", "<#>", "<x>", "<+>"}
 	bars := []string{"░▒▓", "▒▓█", "▓█▓", "█▓▒", "▓▒░", "▒░▒"}
 	return fmt.Sprintf("%s %s model is thinking %s", m.styles.header.Render(frames[m.tick%len(frames)]), m.styles.assistant.Render(bars[m.tick%len(bars)]), m.styles.header.Render(frames[(m.tick+3)%len(frames)]))
+}
+
+func (m model) metricsView() string {
+	totalIn := m.session.InputTokens + m.reqIn
+	totalOut := m.session.OutputTokens + m.reqOut
+	tps := 0.0
+	if m.thinking && !m.streamAt.IsZero() {
+		elapsed := time.Since(m.streamAt).Seconds()
+		if elapsed > 0 {
+			tps = float64(m.reqOut) / elapsed
+		}
+	}
+	text := fmt.Sprintf("in %d  out %d  %.1f t/s", totalIn, totalOut, tps)
+	width := max(20, m.width-6)
+	if len(text) < width {
+		text = strings.Repeat(" ", width-len(text)) + text
+	}
+	return m.styles.help.Render(text)
 }
 
 func (m model) helpText() string {
@@ -478,4 +563,20 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func estimateMessages(messages []storage.Message) int {
+	total := 0
+	for _, msg := range messages {
+		total += estimateTokens(msg.Content)
+	}
+	return total
+}
+
+func estimateTokens(s string) int {
+	words := len(strings.Fields(s))
+	if words == 0 {
+		return 0
+	}
+	return max(1, int(float64(words)*1.33))
 }

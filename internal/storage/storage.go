@@ -25,12 +25,14 @@ type Store struct {
 }
 
 type Session struct {
-	ID        string
-	Title     string
-	Provider  string
-	Model     string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID           string
+	Title        string
+	Provider     string
+	Model        string
+	InputTokens  int
+	OutputTokens int
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type Message struct {
@@ -100,6 +102,12 @@ func (s *Store) Migrate() error {
 			return err
 		}
 	}
+	if err := s.ensureColumn("sessions", "input_tokens", "integer not null default 0"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn("sessions", "output_tokens", "integer not null default 0"); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -153,8 +161,20 @@ func (s *Store) TouchSession(id, title string) error {
 	return err
 }
 
+func (s *Store) AddSessionTokens(id string, inputTokens, outputTokens int) error {
+	_, err := s.db.Exec(
+		`update sessions
+		 set input_tokens = input_tokens + ?,
+		     output_tokens = output_tokens + ?,
+		     updated_at = current_timestamp
+		 where id = ?`,
+		inputTokens, outputTokens, id,
+	)
+	return err
+}
+
 func (s *Store) LatestSession() (Session, bool, error) {
-	rows, err := s.db.Query(`select id, title, provider, model, created_at, updated_at from sessions order by updated_at desc limit 1`)
+	rows, err := s.db.Query(`select id, title, provider, model, input_tokens, output_tokens, created_at, updated_at from sessions order by updated_at desc limit 1`)
 	if err != nil {
 		return Session{}, false, err
 	}
@@ -167,7 +187,7 @@ func (s *Store) LatestSession() (Session, bool, error) {
 }
 
 func (s *Store) ListSessions(limit int) ([]Session, error) {
-	rows, err := s.db.Query(`select id, title, provider, model, created_at, updated_at from sessions order by updated_at desc limit ?`, limit)
+	rows, err := s.db.Query(`select id, title, provider, model, input_tokens, output_tokens, created_at, updated_at from sessions order by updated_at desc limit ?`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +341,33 @@ func scanSession(rows interface {
 	Scan(dest ...any) error
 }) (Session, error) {
 	var sess Session
-	return sess, rows.Scan(&sess.ID, &sess.Title, &sess.Provider, &sess.Model, &sess.CreatedAt, &sess.UpdatedAt)
+	return sess, rows.Scan(&sess.ID, &sess.Title, &sess.Provider, &sess.Model, &sess.InputTokens, &sess.OutputTokens, &sess.CreatedAt, &sess.UpdatedAt)
+}
+
+func (s *Store) ensureColumn(table, name, spec string) error {
+	rows, err := s.db.Query(`pragma table_info(` + table + `)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var columnName, columnType string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &columnName, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		if columnName == name {
+			return rows.Err()
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`alter table ` + table + ` add column ` + name + ` ` + spec)
+	return err
 }
 
 func mkdirFor(path string) error {
