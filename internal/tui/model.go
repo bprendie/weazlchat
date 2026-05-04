@@ -51,6 +51,8 @@ type model struct {
 	streamAt   time.Time
 	reqIn      int
 	reqOut     int
+	pasteText  string
+	pasteLines int
 }
 
 type streamEvent struct {
@@ -128,6 +130,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.resize()
 	case tea.KeyMsg:
+		if m.mode == modeChat && !m.thinking {
+			if updated, cmd, handled := m.handleChatKey(msg); handled {
+				return updated, cmd
+			}
+		}
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
@@ -243,7 +250,7 @@ func (m model) View() string {
 	case modeWorkspace:
 		body = m.workspaces.View()
 	default:
-		input := m.input.View()
+		input := m.inputView()
 		if m.thinking {
 			input = m.thinkingView()
 		}
@@ -302,11 +309,13 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		if m.thinking {
 			return m, nil
 		}
-		prompt := strings.TrimSpace(m.input.Value())
+		prompt := strings.TrimSpace(m.chatPrompt())
 		if prompt == "" {
 			return m, nil
 		}
 		m.input.Reset()
+		m.pasteText = ""
+		m.pasteLines = 0
 		if err := m.store.AddMessage(m.session.ID, "user", prompt); err != nil {
 			m.err = err.Error()
 			return m, nil
@@ -446,6 +455,72 @@ func (m *model) saveWorkspace() {
 	}
 	m.status = "workspace saved"
 	m.err = ""
+}
+
+func (m model) handleChatKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
+	if msg.Paste {
+		m.addPaste(string(msg.Runes))
+		return m, nil, true
+	}
+	switch msg.String() {
+	case "backspace", "ctrl+h":
+		if m.pasteText != "" && m.input.Value() == "" {
+			m.pasteText = ""
+			m.pasteLines = 0
+			m.status = "paste cleared"
+			return m, nil, true
+		}
+	case "ctrl+u":
+		if m.pasteText != "" {
+			m.pasteText = ""
+			m.pasteLines = 0
+			m.input.Reset()
+			m.status = "input cleared"
+			return m, nil, true
+		}
+	}
+	return m, nil, false
+}
+
+func (m *model) addPaste(s string) {
+	if s == "" {
+		return
+	}
+	if m.pasteText == "" {
+		m.pasteText = s
+	} else {
+		m.pasteText += "\n" + s
+	}
+	m.pasteLines = countLines(m.pasteText)
+	m.status = fmt.Sprintf("captured paste: %d lines", m.pasteLines)
+}
+
+func (m model) chatPrompt() string {
+	prefix := strings.TrimSpace(m.input.Value())
+	if m.pasteText == "" {
+		return prefix
+	}
+	if prefix == "" {
+		return m.pasteText
+	}
+	return prefix + "\n\n" + m.pasteText
+}
+
+func (m model) inputView() string {
+	if m.pasteText == "" {
+		return m.input.View()
+	}
+	prefix := strings.TrimSpace(m.input.Value())
+	badge := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#0D0D12")).
+		Background(lipgloss.Color("#F3E600")).
+		Bold(true).
+		Padding(0, 1).
+		Render(fmt.Sprintf("[PASTED %d lines]", m.pasteLines))
+	if prefix == "" {
+		return badge
+	}
+	return m.input.View() + " " + badge
 }
 
 func (m model) startStream(ch chan<- streamEvent, prompt string, history []storage.Message) tea.Cmd {
@@ -599,6 +674,13 @@ func wrapText(s string, width int) string {
 		}
 	}
 	return out.String()
+}
+
+func countLines(s string) int {
+	if s == "" {
+		return 0
+	}
+	return strings.Count(s, "\n") + 1
 }
 
 func wrapLine(s string, width int) string {
