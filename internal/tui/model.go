@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
 
 	"github.com/bprendie/weazlchat/internal/config"
@@ -492,7 +493,7 @@ func (m *model) renderMessages() {
 			}
 			b.WriteString(label)
 			b.WriteString("\n")
-			b.WriteString(msg.Content)
+			b.WriteString(wrapText(msg.Content, m.viewport.Width))
 			b.WriteString("\n\n")
 		}
 	}
@@ -502,7 +503,7 @@ func (m *model) renderMessages() {
 		if m.streamText == "" {
 			b.WriteString(m.thinkingView())
 		} else {
-			b.WriteString(m.streamText)
+			b.WriteString(wrapText(m.streamText, m.viewport.Width))
 		}
 		b.WriteString("\n\n")
 	}
@@ -579,4 +580,58 @@ func estimateTokens(s string) int {
 		return 0
 	}
 	return max(1, int(float64(words)*1.33))
+}
+
+func wrapText(s string, width int) string {
+	width = max(10, width)
+	var out strings.Builder
+	paragraphs := strings.Split(s, "\n")
+	for i, paragraph := range paragraphs {
+		if paragraph == "" {
+			if i < len(paragraphs)-1 {
+				out.WriteByte('\n')
+			}
+			continue
+		}
+		out.WriteString(wrapLine(paragraph, width))
+		if i < len(paragraphs)-1 {
+			out.WriteByte('\n')
+		}
+	}
+	return out.String()
+}
+
+func wrapLine(s string, width int) string {
+	words := strings.Fields(s)
+	if len(words) == 0 {
+		return ""
+	}
+	var out strings.Builder
+	lineWidth := 0
+	for _, word := range words {
+		wordWidth := lipgloss.Width(word)
+		if lineWidth > 0 && lineWidth+1+wordWidth > width {
+			out.WriteByte('\n')
+			lineWidth = 0
+		}
+		if lineWidth > 0 {
+			out.WriteByte(' ')
+			lineWidth++
+		}
+		if wordWidth <= width {
+			out.WriteString(word)
+			lineWidth += wordWidth
+			continue
+		}
+		for _, r := range word {
+			rw := lipgloss.Width(string(r))
+			if lineWidth > 0 && lineWidth+rw > width {
+				out.WriteByte('\n')
+				lineWidth = 0
+			}
+			out.WriteRune(r)
+			lineWidth += rw
+		}
+	}
+	return out.String()
 }
