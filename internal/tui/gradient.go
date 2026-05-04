@@ -20,14 +20,36 @@ var logoStops = []rgb{
 	hexRGB(0x7D56F4),
 }
 
-func gradientLogo(s string) string {
-	lines := strings.Split(s, "\n")
-	width := 1
-	for _, line := range lines {
-		if len(line) > width {
-			width = len(line)
+func renderLogo(s string, width int) string {
+	wordmark := gradientLogo(s)
+	logoWidth := maxLineWidth(s)
+	if width <= 0 || width < logoWidth+10 {
+		return wordmark
+	}
+
+	fieldStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#15233F")).Bold(true)
+	leftWidth := 6
+	gapWidth := 1
+	rightWidth := max(4, width-logoWidth-leftWidth-(gapWidth*2))
+	lines := strings.Split(wordmark, "\n")
+	var out strings.Builder
+	for i, line := range lines {
+		right := max(1, rightWidth-i)
+		out.WriteString(fieldStyle.Render(strings.Repeat("╱", leftWidth)))
+		out.WriteString(strings.Repeat(" ", gapWidth))
+		out.WriteString(line)
+		out.WriteString(strings.Repeat(" ", gapWidth))
+		out.WriteString(fieldStyle.Render(strings.Repeat("╱", right)))
+		if i < len(lines)-1 {
+			out.WriteByte('\n')
 		}
 	}
+	return out.String()
+}
+
+func gradientLogo(s string) string {
+	lines := strings.Split(s, "\n")
+	width := maxLineWidth(s)
 
 	var out strings.Builder
 	for y, line := range lines {
@@ -45,6 +67,16 @@ func gradientLogo(s string) string {
 		}
 	}
 	return out.String()
+}
+
+func maxLineWidth(s string) int {
+	width := 1
+	for _, line := range strings.Split(s, "\n") {
+		if lipgloss.Width(line) > width {
+			width = lipgloss.Width(line)
+		}
+	}
+	return width
 }
 
 func sampleGradient(t float64, stops []rgb) string {

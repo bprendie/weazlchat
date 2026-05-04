@@ -225,7 +225,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	header := gradientLogo(ansiHeader())
+	header := renderLogo(ansiHeader(), max(20, m.width-6))
 	status := m.styles.status.Render(m.status)
 	if m.err != "" {
 		status = m.styles.system.Render("! " + m.err)
