@@ -87,7 +87,7 @@ func New(cfg config.Config, cfgPath string, store *storage.Store) tea.Model {
 	ti.Placeholder = "database password"
 	ti.EchoMode = textinput.EchoPassword
 	ti.Focus()
-	ti.CharLimit = 4096
+	ti.CharLimit = 65535
 
 	sessions := list.New(nil, list.NewDefaultDelegate(), 0, 0)
 	sessions.Title = "Sessions"
@@ -129,6 +129,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.resize()
+	case tea.MouseMsg:
+		if m.mode == modeChat {
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
+		}
 	case tea.KeyMsg:
 		if m.mode == modeChat && !m.thinking {
 			if updated, cmd, handled := m.handleChatKey(msg); handled {
@@ -458,7 +464,7 @@ func (m *model) saveWorkspace() {
 }
 
 func (m model) handleChatKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
-	if msg.Paste {
+	if msg.Paste || looksLikePaste(msg) {
 		m.addPaste(string(msg.Runes))
 		return m, nil, true
 	}
@@ -681,6 +687,13 @@ func countLines(s string) int {
 		return 0
 	}
 	return strings.Count(s, "\n") + 1
+}
+
+func looksLikePaste(msg tea.KeyMsg) bool {
+	if msg.Type != tea.KeyRunes {
+		return false
+	}
+	return len(msg.Runes) > 16 || strings.ContainsRune(string(msg.Runes), '\n')
 }
 
 func wrapLine(s string, width int) string {
