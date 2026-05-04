@@ -98,7 +98,7 @@ func (c Client) postJSON(ctx context.Context, path string, body any, out any) er
 	if err != nil {
 		return err
 	}
-	url := strings.TrimRight(c.provider.ServerURL, "/") + path
+	url := baseURL(c.provider) + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
 		return err
@@ -116,4 +116,15 @@ func (c Client) postJSON(ctx context.Context, path string, body any, out any) er
 		return fmt.Errorf("%s returned %s", url, resp.Status)
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+func baseURL(provider config.Provider) string {
+	u := strings.TrimRight(strings.TrimSpace(provider.ServerURL), "/")
+	switch strings.ToLower(provider.Type) {
+	case "vllm":
+		u = strings.TrimSuffix(u, "/v1")
+	case "ollama":
+		u = strings.TrimSuffix(u, "/api")
+	}
+	return u
 }

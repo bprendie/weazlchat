@@ -35,7 +35,9 @@ func run() error {
 		defaultURL = "http://localhost:11434"
 	}
 
-	serverURL := askString(reader, "LLM provider URL", defaultURL)
+	fmt.Println(urlHelp(providerType))
+	serverURL := normalizeServerURL(providerType, askString(reader, "Base URL", defaultURL))
+	fmt.Printf("Using base URL: %s\n", serverURL)
 	models, err := fetchModels(providerType, serverURL)
 	if err != nil {
 		fmt.Printf("Could not query models: %v\n", err)
@@ -55,6 +57,7 @@ func run() error {
 func fetchModels(providerType, serverURL string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+	serverURL = normalizeServerURL(providerType, serverURL)
 
 	switch providerType {
 	case "vllm":
@@ -120,6 +123,7 @@ func getJSON(ctx context.Context, url string, out any) error {
 
 func writeConfig(cfgPath string, cfg config.Config, providerType, serverURL, model string) error {
 	providerID := "primary-" + providerType
+	serverURL = normalizeServerURL(providerType, serverURL)
 	if cfg.Providers == nil {
 		cfg.Providers = map[string]config.Provider{}
 	}
@@ -192,6 +196,28 @@ func askString(reader *bufio.Reader, label, def string) string {
 		return def
 	}
 	return answer
+}
+
+func urlHelp(providerType string) string {
+	switch providerType {
+	case "vllm":
+		return "Enter the base vLLM server URL only, without /v1. Example: http://localhost:8000 or http://localhost:8000"
+	case "ollama":
+		return "Enter the base Ollama server URL only, without /api. Example: http://localhost:11434"
+	default:
+		return "Enter the provider base URL."
+	}
+}
+
+func normalizeServerURL(providerType, raw string) string {
+	u := strings.TrimRight(strings.TrimSpace(raw), "/")
+	switch providerType {
+	case "vllm":
+		u = strings.TrimSuffix(u, "/v1")
+	case "ollama":
+		u = strings.TrimSuffix(u, "/api")
+	}
+	return u
 }
 
 func defaultModel(providerType string) string {
