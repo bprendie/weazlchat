@@ -25,6 +25,7 @@ go run ./cmd/weazlchat
 ```
 
 The installer builds `weazlchat`, places it in `~/.weazlchat/bin`, and adds that directory to your shell `PATH` when it is not already present.
+It also asks for your provider type and URL, queries the provider for available models, writes `~/.config/weazlchat/config.json`, and starts the TUI.
 
 The first run asks you to create a local history password. Session history and workspace saves are stored in SQLite with a bcrypt-protected vault and AES-GCM encrypted payloads.
 

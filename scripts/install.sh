@@ -62,6 +62,20 @@ if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
 fi
 
 echo "Installed $APP_NAME to $BIN_PATH"
-echo "Run: $APP_NAME"
 echo "If your shell cannot find it yet, restart the shell or run:"
 echo "  $path_line"
+
+echo ""
+echo "Configuring provider..."
+(
+  cd "$REPO_ROOT"
+  GOCACHE="$GO_CACHE" GOMODCACHE="$GO_MOD_CACHE" go run -buildvcs=false ./cmd/weazlchat-setup
+)
+
+if [[ "${WEAZLCHAT_SKIP_LAUNCH:-}" == "1" ]]; then
+  echo "Skipping first launch because WEAZLCHAT_SKIP_LAUNCH=1"
+else
+  echo ""
+  echo "Launching $APP_NAME..."
+  exec "$BIN_PATH"
+fi
