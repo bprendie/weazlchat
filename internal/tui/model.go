@@ -186,7 +186,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	header := m.styles.header.Render(ansiHeader())
+	header := gradientLogo(ansiHeader())
 	status := m.styles.status.Render(m.status)
 	if m.err != "" {
 		status = m.styles.system.Render("! " + m.err)
@@ -422,11 +422,12 @@ func (m model) thinkingView() string {
 }
 
 func ansiHeader() string {
-	return ` __        __ _____  _  _  ____  _    ____ _     _  _  ____ _____
- \ \      / /|___ / | || ||__  / | |  / ___| |__ | || ||_  /|_   _|
-  \ \ /\ / /   |_ \ | || |_ / /  | | | |   | '_ \| || |_ / /   | |
-   \ V  V /   ___) ||__   _/ /_  | |_| |___| | | |__   _/ /_  | |
-    \_/\_/   |____/    |_||____|  \___\____|_| |_|  |_||____| |_|`
+	return ` __      __          _______________.__  _________ .__        ________________
+/  \    /  \ ____   /  |  \____    /|  | \_   ___ \|  |__    /  |  \__    ___/
+\   \/\/   // __ \ /   |  |_/     / |  | /    \  \/|  |  \  /   |  |_|    |
+ \        /\  ___//    ^   /     /_ |  |_\     \___|   Y  \/    ^   /|    |
+  \__/\  /  \___  >____   /_______ \|____/\______  /___|  /\____   | |____|
+       \/       \/     |__|       \/             \/     \/      |__|`
 }
 
 func trimTitle(s string) string {
