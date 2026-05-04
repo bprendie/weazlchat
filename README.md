@@ -41,6 +41,7 @@ The first run asks you to create a local history password. Session history and w
 - `enter`: send message or select session
 - `ctrl+n`: new session
 - `ctrl+r`: resume from session history
+- `ctrl+d`: delete selected session from session history
 - `ctrl+s`: save current workspace view
 - `ctrl+w`: list workspace saves
 - `esc`: back to chat

@@ -183,6 +183,25 @@ func (s *Store) ListSessions(limit int) ([]Session, error) {
 	return sessions, rows.Err()
 }
 
+func (s *Store) DeleteSession(id string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`delete from messages where session_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`delete from workspace_saves where session_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`delete from sessions where id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (s *Store) AddMessage(sessionID, role, content string) error {
 	if !s.unlocked {
 		return errors.New("database is locked")

@@ -139,6 +139,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.mode == modeChat {
 				return m.showWorkspaces()
 			}
+		case "ctrl+d":
+			if m.mode == modeSessions {
+				return m.deleteSelectedSession()
+			}
 		case "esc":
 			if m.mode == modeSessions || m.mode == modeWorkspace {
 				m.mode = modeChat
@@ -209,7 +213,7 @@ func (m model) View() string {
 		}
 		body = m.viewport.View() + "\n" + m.styles.input.Width(max(20, m.width-6)).Render(input)
 	}
-	help := m.styles.help.Render("enter send/select | ctrl+n new | ctrl+r sessions | ctrl+s save workspace | ctrl+w saves | esc back | ctrl+c quit")
+	help := m.styles.help.Render(m.helpText())
 	return m.styles.frame.Width(m.width).Height(m.height).Render(strings.Join([]string{header, status, body, help}, "\n"))
 }
 
@@ -350,7 +354,31 @@ func (m model) showSessions() (tea.Model, tea.Cmd) {
 	}
 	m.sessions.SetItems(items)
 	m.mode = modeSessions
+	m.status = "select session | ctrl+d delete"
 	return m, nil
+}
+
+func (m model) deleteSelectedSession() (tea.Model, tea.Cmd) {
+	item, ok := m.sessions.SelectedItem().(sessionItem)
+	if !ok {
+		return m, nil
+	}
+	deletedCurrent := item.session.ID == m.session.ID
+	if err := m.store.DeleteSession(item.session.ID); err != nil {
+		m.err = err.Error()
+		return m, nil
+	}
+	m.err = ""
+	m.status = "deleted " + item.session.Title
+	updated, cmd := m.showSessions()
+	m = updated.(model)
+	m.status = "deleted " + item.session.Title
+	if deletedCurrent {
+		m.session = storage.Session{}
+		m.messages = nil
+		return m.newSession()
+	}
+	return m, cmd
 }
 
 func (m model) showWorkspaces() (tea.Model, tea.Cmd) {
@@ -419,6 +447,13 @@ func (m model) thinkingView() string {
 	frames := []string{"<*>", "<+>", "<x>", "<#>", "<@>", "<#>", "<x>", "<+>"}
 	bars := []string{"░▒▓", "▒▓█", "▓█▓", "█▓▒", "▓▒░", "▒░▒"}
 	return fmt.Sprintf("%s %s model is thinking %s", m.styles.header.Render(frames[m.tick%len(frames)]), m.styles.assistant.Render(bars[m.tick%len(bars)]), m.styles.header.Render(frames[(m.tick+3)%len(frames)]))
+}
+
+func (m model) helpText() string {
+	if m.mode == modeSessions {
+		return "enter resume | ctrl+d delete session | esc back | ctrl+c quit"
+	}
+	return "enter send/select | ctrl+n new | ctrl+r sessions | ctrl+s save workspace | ctrl+w saves | esc back | ctrl+c quit"
 }
 
 func ansiHeader() string {
