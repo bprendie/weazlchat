@@ -27,7 +27,7 @@ func renderLogo(s string, width int) string {
 		return wordmark
 	}
 
-	fieldStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#15233F")).Bold(true)
+	fieldStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#294A7A")).Bold(true)
 	leftWidth := 6
 	gapWidth := 1
 	rightWidth := max(4, width-logoWidth-leftWidth-(gapWidth*2))
@@ -38,6 +38,9 @@ func renderLogo(s string, width int) string {
 		out.WriteString(fieldStyle.Render(strings.Repeat("╱", leftWidth)))
 		out.WriteString(strings.Repeat(" ", gapWidth))
 		out.WriteString(line)
+		if pad := logoWidth - lipgloss.Width(line); pad > 0 {
+			out.WriteString(strings.Repeat(" ", pad))
+		}
 		out.WriteString(strings.Repeat(" ", gapWidth))
 		out.WriteString(fieldStyle.Render(strings.Repeat("╱", right)))
 		if i < len(lines)-1 {
