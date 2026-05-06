@@ -798,6 +798,10 @@ func (m *model) renderMessages() {
 	if m.thinking {
 		b.WriteString(m.styles.assistant.Render("ai"))
 		b.WriteString("\n")
+		if len(m.pendingTools) > 0 {
+			b.WriteString(m.styles.system.Render("🔧 using tools"))
+			b.WriteString("\n")
+		}
 		if m.streamText == "" {
 			b.WriteString(m.thinkingView())
 		} else {
