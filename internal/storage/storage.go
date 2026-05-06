@@ -36,11 +36,13 @@ type Session struct {
 }
 
 type Message struct {
-	ID        int64
-	SessionID string
-	Role      string
-	Content   string
-	CreatedAt time.Time
+	ID         int64
+	SessionID  string
+	Role       string
+	Content    string
+	ToolCalls  string // JSON-encoded tool calls (for assistant messages)
+	ToolCallID string // Tool call ID (for tool result messages)
+	CreatedAt  time.Time
 }
 
 type WorkspaceSave struct {
@@ -85,6 +87,8 @@ func (s *Store) Migrate() error {
 			session_id text not null references sessions(id) on delete cascade,
 			role text not null,
 			content text not null,
+			tool_calls text,
+			tool_call_id text,
 			created_at datetime not null default current_timestamp
 		)`,
 		`create table if not exists workspace_saves (
@@ -106,6 +110,12 @@ func (s *Store) Migrate() error {
 		return err
 	}
 	if err := s.ensureColumn("sessions", "output_tokens", "integer not null default 0"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn("messages", "tool_calls", "text"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn("messages", "tool_call_id", "text"); err != nil {
 		return err
 	}
 	return nil
@@ -223,6 +233,10 @@ func (s *Store) DeleteSession(id string) error {
 }
 
 func (s *Store) AddMessage(sessionID, role, content string) error {
+	return s.AddMessageWithTools(sessionID, role, content, "", "")
+}
+
+func (s *Store) AddMessageWithTools(sessionID, role, content, toolCalls, toolCallID string) error {
 	if !s.unlocked {
 		return errors.New("database is locked")
 	}
@@ -231,8 +245,8 @@ func (s *Store) AddMessage(sessionID, role, content string) error {
 		return err
 	}
 	_, err = s.db.Exec(
-		`insert into messages (session_id, role, content) values (?, ?, ?)`,
-		sessionID, role, blob,
+		`insert into messages (session_id, role, content, tool_calls, tool_call_id) values (?, ?, ?, ?, ?)`,
+		sessionID, role, blob, toolCalls, toolCallID,
 	)
 	return err
 }
@@ -241,7 +255,7 @@ func (s *Store) Messages(sessionID string) ([]Message, error) {
 	if !s.unlocked {
 		return nil, errors.New("database is locked")
 	}
-	rows, err := s.db.Query(`select id, session_id, role, content, created_at from messages where session_id = ? order by id`, sessionID)
+	rows, err := s.db.Query(`select id, session_id, role, content, tool_calls, tool_call_id, created_at from messages where session_id = ? order by id`, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -250,12 +264,19 @@ func (s *Store) Messages(sessionID string) ([]Message, error) {
 	for rows.Next() {
 		var msg Message
 		var enc string
-		if err := rows.Scan(&msg.ID, &msg.SessionID, &msg.Role, &enc, &msg.CreatedAt); err != nil {
+		var toolCalls, toolCallID sql.NullString
+		if err := rows.Scan(&msg.ID, &msg.SessionID, &msg.Role, &enc, &toolCalls, &toolCallID, &msg.CreatedAt); err != nil {
 			return nil, err
 		}
 		msg.Content, err = s.decrypt(enc)
 		if err != nil {
 			return nil, err
+		}
+		if toolCalls.Valid {
+			msg.ToolCalls = toolCalls.String
+		}
+		if toolCallID.Valid {
+			msg.ToolCallID = toolCallID.String
 		}
 		messages = append(messages, msg)
 	}

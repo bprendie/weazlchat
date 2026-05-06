@@ -8,6 +8,7 @@ import (
 
 	"github.com/bprendie/weazlchat/internal/config"
 	"github.com/bprendie/weazlchat/internal/storage"
+	"github.com/bprendie/weazlchat/internal/tools"
 	"github.com/bprendie/weazlchat/internal/tui"
 )
 
@@ -30,7 +31,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	p := tea.NewProgram(tui.New(cfg, cfgPath, store), tea.WithAltScreen())
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(tools.NewCalculatorTool())
+	toolRegistry.Register(tools.NewDateTimeTool())
+	if cfg.Tools.AlphaVantageKey != "" {
+		toolRegistry.Register(tools.NewStockPriceTool(cfg.Tools.AlphaVantageKey))
+	}
+
+	p := tea.NewProgram(tui.New(cfg, cfgPath, store, toolRegistry), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "tui: %v\n", err)
 		os.Exit(1)

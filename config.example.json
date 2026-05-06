@@ -1,0 +1,26 @@
+{
+  "active_provider": "local-vllm",
+  "providers": {
+    "local-vllm": {
+      "type": "vllm",
+      "server_url": "http://localhost:8000",
+      "model": "local-model"
+    },
+    "local-ollama": {
+      "type": "ollama",
+      "server_url": "http://localhost:11434",
+      "model": "llama3.1"
+    }
+  },
+  "database": {
+    "path": "/home/user/.local/share/weazlchat/weazlchat.sqlite3"
+  },
+  "ui": {
+    "resume_last_session": true
+  },
+  "tools": {
+    "enabled": true,
+    "auto_execute_safe": true,
+    "alpha_vantage_api_key": "YOUR_API_KEY_HERE"
+  }
+}

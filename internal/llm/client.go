@@ -16,8 +16,19 @@ import (
 )
 
 type ChatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string     `json:"role"`
+	Content    string     `json:"content,omitempty"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
+}
+
+type ToolCall struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
 }
 
 type Usage struct {
@@ -25,9 +36,18 @@ type Usage struct {
 	OutputTokens int
 }
 
+type StreamEvent struct {
+	Type      string     // "content", "tool_call", "done"
+	Content   string     // Text content chunk
+	ToolCalls []ToolCall // Tool calls from assistant
+	Usage     Usage      // Token usage (only on done)
+	Error     error      // Error if any
+}
+
 type Client struct {
 	provider config.Provider
 	http     *http.Client
+	tools    []map[string]any
 }
 
 func New(provider config.Provider) Client {
@@ -37,24 +57,50 @@ func New(provider config.Provider) Client {
 	}
 }
 
-func (c Client) Stream(ctx context.Context, history []storage.Message, prompt string, onChunk func(string)) (Usage, error) {
-	messages := make([]ChatMessage, 0, len(history)+1)
-	for _, msg := range history {
-		messages = append(messages, ChatMessage{Role: msg.Role, Content: msg.Content})
-	}
-	messages = append(messages, ChatMessage{Role: "user", Content: prompt})
+// WithTools adds tool definitions to the client
+func (c Client) WithTools(tools []map[string]any) Client {
+	c.tools = tools
+	return c
+}
+
+func (c Client) Stream(ctx context.Context, history []storage.Message, prompt string, onEvent func(StreamEvent)) (Usage, error) {
+	messages := chatMessages(history, prompt)
 
 	switch strings.ToLower(c.provider.Type) {
 	case "vllm":
-		return c.streamOpenAICompat(ctx, messages, onChunk)
+		return c.streamOpenAICompat(ctx, messages, onEvent)
 	case "ollama":
-		return c.streamOllama(ctx, messages, onChunk)
+		return c.streamOllama(ctx, messages, onEvent)
 	default:
 		return Usage{}, fmt.Errorf("unsupported provider type %q", c.provider.Type)
 	}
 }
 
-func (c Client) streamOpenAICompat(ctx context.Context, messages []ChatMessage, onChunk func(string)) (Usage, error) {
+func chatMessages(history []storage.Message, prompt string) []ChatMessage {
+	messages := make([]ChatMessage, 0, len(history)+1)
+	for _, msg := range history {
+		cm := ChatMessage{Role: msg.Role, Content: msg.Content}
+		// Parse tool calls if present in metadata
+		if msg.Role == "assistant" && msg.ToolCalls != "" {
+			var toolCalls []ToolCall
+			if err := json.Unmarshal([]byte(msg.ToolCalls), &toolCalls); err == nil {
+				cm.ToolCalls = toolCalls
+				cm.Content = "" // Content is empty when there are tool calls
+			}
+		}
+		// Add tool results
+		if msg.Role == "tool" {
+			cm.ToolCallID = msg.ToolCallID
+		}
+		messages = append(messages, cm)
+	}
+	if strings.TrimSpace(prompt) != "" {
+		messages = append(messages, ChatMessage{Role: "user", Content: prompt})
+	}
+	return messages
+}
+
+func (c Client) streamOpenAICompat(ctx context.Context, messages []ChatMessage, onEvent func(StreamEvent)) (Usage, error) {
 	reqBody := map[string]any{
 		"model":       c.provider.Model,
 		"messages":    messages,
@@ -64,6 +110,13 @@ func (c Client) streamOpenAICompat(ctx context.Context, messages []ChatMessage, 
 			"include_usage": true,
 		},
 	}
+
+	// Add tools if available
+	if len(c.tools) > 0 {
+		reqBody["tools"] = c.tools
+		reqBody["tool_choice"] = "auto"
+	}
+
 	resp, err := c.post(ctx, "/v1/chat/completions", reqBody)
 	if err != nil {
 		return Usage{}, err
@@ -73,6 +126,8 @@ func (c Client) streamOpenAICompat(ctx context.Context, messages []ChatMessage, 
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	var usage Usage
+	toolCallsMap := make(map[int]*ToolCall) // Track tool calls by index
+
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, ":") {
@@ -88,8 +143,18 @@ func (c Client) streamOpenAICompat(ctx context.Context, messages []ChatMessage, 
 		var chunk struct {
 			Choices []struct {
 				Delta struct {
-					Content string `json:"content"`
+					Content   string `json:"content"`
+					ToolCalls []struct {
+						Index    int    `json:"index"`
+						ID       string `json:"id"`
+						Type     string `json:"type"`
+						Function struct {
+							Name      string `json:"name"`
+							Arguments string `json:"arguments"`
+						} `json:"function"`
+					} `json:"tool_calls"`
 				} `json:"delta"`
+				FinishReason string `json:"finish_reason"`
 			} `json:"choices"`
 			Usage *struct {
 				PromptTokens     int `json:"prompt_tokens"`
@@ -110,20 +175,55 @@ func (c Client) streamOpenAICompat(ctx context.Context, messages []ChatMessage, 
 			usage.OutputTokens = chunk.Usage.CompletionTokens
 		}
 		for _, choice := range chunk.Choices {
+			// Handle content
 			if choice.Delta.Content != "" {
-				onChunk(choice.Delta.Content)
+				onEvent(StreamEvent{Type: "content", Content: choice.Delta.Content})
+			}
+
+			// Handle tool calls
+			for _, tc := range choice.Delta.ToolCalls {
+				if _, exists := toolCallsMap[tc.Index]; !exists {
+					toolCallsMap[tc.Index] = &ToolCall{
+						ID:   tc.ID,
+						Type: tc.Type,
+					}
+				}
+				call := toolCallsMap[tc.Index]
+				if tc.Function.Name != "" {
+					call.Function.Name = tc.Function.Name
+				}
+				if tc.Function.Arguments != "" {
+					call.Function.Arguments += tc.Function.Arguments
+				}
+			}
+
+			// Send tool calls when finish_reason is tool_calls
+			if choice.FinishReason == "tool_calls" && len(toolCallsMap) > 0 {
+				toolCalls := make([]ToolCall, 0, len(toolCallsMap))
+				for i := 0; i < len(toolCallsMap); i++ {
+					if call, ok := toolCallsMap[i]; ok {
+						toolCalls = append(toolCalls, *call)
+					}
+				}
+				onEvent(StreamEvent{Type: "tool_call", ToolCalls: toolCalls})
 			}
 		}
 	}
 	return usage, scanner.Err()
 }
 
-func (c Client) streamOllama(ctx context.Context, messages []ChatMessage, onChunk func(string)) (Usage, error) {
+func (c Client) streamOllama(ctx context.Context, messages []ChatMessage, onEvent func(StreamEvent)) (Usage, error) {
 	reqBody := map[string]any{
 		"model":    c.provider.Model,
 		"messages": messages,
 		"stream":   true,
 	}
+
+	// Add tools if available
+	if len(c.tools) > 0 {
+		reqBody["tools"] = c.tools
+	}
+
 	resp, err := c.post(ctx, "/api/chat", reqBody)
 	if err != nil {
 		return Usage{}, err
@@ -132,13 +232,23 @@ func (c Client) streamOllama(ctx context.Context, messages []ChatMessage, onChun
 
 	dec := json.NewDecoder(resp.Body)
 	var usage Usage
+
 	for {
 		var chunk struct {
-			Message         ChatMessage `json:"message"`
-			Done            bool        `json:"done"`
-			PromptEvalCount int         `json:"prompt_eval_count"`
-			EvalCount       int         `json:"eval_count"`
-			Error           string      `json:"error"`
+			Message struct {
+				Role      string `json:"role"`
+				Content   string `json:"content"`
+				ToolCalls []struct {
+					Function struct {
+						Name      string                 `json:"name"`
+						Arguments map[string]interface{} `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			} `json:"message"`
+			Done            bool   `json:"done"`
+			PromptEvalCount int    `json:"prompt_eval_count"`
+			EvalCount       int    `json:"eval_count"`
+			Error           string `json:"error"`
 		}
 		if err := dec.Decode(&chunk); errors.Is(err, io.EOF) {
 			break
@@ -148,9 +258,32 @@ func (c Client) streamOllama(ctx context.Context, messages []ChatMessage, onChun
 		if chunk.Error != "" {
 			return usage, errors.New(chunk.Error)
 		}
+
+		// Handle content
 		if chunk.Message.Content != "" {
-			onChunk(chunk.Message.Content)
+			onEvent(StreamEvent{Type: "content", Content: chunk.Message.Content})
 		}
+
+		// Handle tool calls
+		if len(chunk.Message.ToolCalls) > 0 {
+			toolCalls := make([]ToolCall, len(chunk.Message.ToolCalls))
+			for i, tc := range chunk.Message.ToolCalls {
+				argsJSON, _ := json.Marshal(tc.Function.Arguments)
+				toolCalls[i] = ToolCall{
+					ID:   fmt.Sprintf("call_%d", i),
+					Type: "function",
+					Function: struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					}{
+						Name:      tc.Function.Name,
+						Arguments: string(argsJSON),
+					},
+				}
+			}
+			onEvent(StreamEvent{Type: "tool_call", ToolCalls: toolCalls})
+		}
+
 		if chunk.Done {
 			usage.InputTokens = chunk.PromptEvalCount
 			usage.OutputTokens = chunk.EvalCount

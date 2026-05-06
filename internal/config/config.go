@@ -14,6 +14,7 @@ type Config struct {
 	Providers      map[string]Provider `json:"providers"`
 	Database       Database            `json:"database"`
 	UI             UI                  `json:"ui"`
+	Tools          Tools               `json:"tools"`
 }
 
 type Provider struct {
@@ -29,6 +30,12 @@ type Database struct {
 
 type UI struct {
 	ResumeLastSession bool `json:"resume_last_session"`
+}
+
+type Tools struct {
+	Enabled        bool   `json:"enabled"`
+	AutoExecute    bool   `json:"auto_execute_safe"`
+	AlphaVantageKey string `json:"alpha_vantage_api_key,omitempty"`
 }
 
 func Load() (Config, string, error) {
@@ -85,6 +92,10 @@ func Default() Config {
 		},
 		Database: Database{Path: filepath.Join(dataDir, "weazlchat.sqlite3")},
 		UI:       UI{ResumeLastSession: true},
+		Tools: Tools{
+			Enabled:     false,
+			AutoExecute: true,
+		},
 	}
 }
 

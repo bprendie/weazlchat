@@ -2,11 +2,13 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,6 +18,7 @@ import (
 	"github.com/bprendie/weazlchat/internal/config"
 	"github.com/bprendie/weazlchat/internal/llm"
 	"github.com/bprendie/weazlchat/internal/storage"
+	"github.com/bprendie/weazlchat/internal/tools"
 )
 
 type mode int
@@ -32,6 +35,7 @@ type model struct {
 	cfg          config.Config
 	cfgPath      string
 	store        *storage.Store
+	toolRegistry *tools.Registry
 	styles       styles
 	mode         mode
 	width        int
@@ -40,12 +44,12 @@ type model struct {
 	viewport     viewport.Model
 	sessions     list.Model
 	workspaces   list.Model
+	working      spinner.Model
 	session      storage.Session
 	messages     []storage.Message
 	err          string
 	status       string
 	thinking     bool
-	tick         int
 	stream       <-chan streamEvent
 	streamText   string
 	streamAt     time.Time
@@ -55,16 +59,18 @@ type model struct {
 	pasteLines   int
 	historyIdx   int
 	historyDraft string
+	pendingTools []llm.ToolCall
+	toolResults  []string
 }
 
 type streamEvent struct {
-	chunk string
-	usage llm.Usage
-	err   error
-	done  bool
+	eventType string // "content", "tool_call", "done"
+	chunk     string
+	toolCalls []llm.ToolCall
+	usage     llm.Usage
+	err       error
+	done      bool
 }
-
-type tickMsg time.Time
 
 type sessionItem struct {
 	session storage.Session
@@ -84,7 +90,7 @@ func (i workspaceItem) Description() string {
 }
 func (i workspaceItem) FilterValue() string { return storage.WorkspaceSave(i).Name }
 
-func New(cfg config.Config, cfgPath string, store *storage.Store) tea.Model {
+func New(cfg config.Config, cfgPath string, store *storage.Store, toolRegistry *tools.Registry) tea.Model {
 	ti := textinput.New()
 	ti.Placeholder = "database password"
 	ti.EchoMode = textinput.EchoPassword
@@ -96,17 +102,25 @@ func New(cfg config.Config, cfgPath string, store *storage.Store) tea.Model {
 	workspaces := list.New(nil, list.NewDefaultDelegate(), 0, 0)
 	workspaces.Title = "Workspace Saves"
 
+	s := newStyles()
+	working := spinner.New(
+		spinner.WithSpinner(spinner.MiniDot),
+		spinner.WithStyle(s.assistant),
+	)
+
 	return model{
-		cfg:        cfg,
-		cfgPath:    cfgPath,
-		store:      store,
-		styles:     newStyles(),
-		mode:       modeVault,
-		input:      ti,
-		viewport:   viewport.New(0, 0),
-		sessions:   sessions,
-		workspaces: workspaces,
-		status:     "private local chat",
+		cfg:          cfg,
+		cfgPath:      cfgPath,
+		store:        store,
+		toolRegistry: toolRegistry,
+		styles:       s,
+		mode:         modeVault,
+		input:        ti,
+		viewport:     viewport.New(0, 0),
+		sessions:     sessions,
+		workspaces:   workspaces,
+		working:      working,
+		status:       "private local chat",
 	}
 }
 
@@ -195,9 +209,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleEnter()
 		}
 	case streamEvent:
-		if msg.chunk != "" {
+		if msg.eventType == "content" && msg.chunk != "" {
 			m.streamText += msg.chunk
 			m.reqOut = estimateTokens(m.streamText)
+			m.renderMessages()
+		}
+		if msg.eventType == "tool_call" && len(msg.toolCalls) > 0 {
+			m.pendingTools = msg.toolCalls
+			m.status = fmt.Sprintf("executing %d tool(s)", len(msg.toolCalls))
 			m.renderMessages()
 		}
 		if !msg.done {
@@ -219,7 +238,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if outputTokens == 0 {
 			outputTokens = max(1, estimateTokens(m.streamText))
 		}
-		if err := m.store.AddMessage(m.session.ID, "assistant", strings.TrimSpace(m.streamText)); err != nil {
+
+		// Handle tool calls if present
+		if len(m.pendingTools) > 0 && m.cfg.Tools.Enabled {
+			return m.executeTools(inputTokens, outputTokens)
+		}
+
+		// Save assistant message
+		toolCallsJSON := ""
+		if len(m.pendingTools) > 0 {
+			b, _ := json.Marshal(m.pendingTools)
+			toolCallsJSON = string(b)
+		}
+		if err := m.store.AddMessageWithTools(m.session.ID, "assistant", strings.TrimSpace(m.streamText), toolCallsJSON, ""); err != nil {
 			m.err = err.Error()
 			return m, nil
 		}
@@ -231,15 +262,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.session.OutputTokens += outputTokens
 		m.messages, _ = m.store.Messages(m.session.ID)
 		m.streamText = ""
+		m.pendingTools = nil
+		m.toolResults = nil
 		m.reqIn = 0
 		m.reqOut = 0
 		m.renderMessages()
 		m.status = "ready"
 		return m, nil
-	case tickMsg:
+	case spinner.TickMsg:
 		if m.thinking {
-			m.tick++
-			return m, tea.Tick(110*time.Millisecond, func(t time.Time) tea.Msg { return tickMsg(t) })
+			var cmd tea.Cmd
+			m.working, cmd = m.working.Update(msg)
+			m.renderMessages()
+			return m, cmd
 		}
 	}
 
@@ -372,7 +407,7 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		m.status = "streaming"
 		ch := make(chan streamEvent, 64)
 		m.stream = ch
-		return m, tea.Batch(m.startStream(ch, prompt, history[:len(history)-1]), waitStream(ch), tea.Tick(110*time.Millisecond, func(t time.Time) tea.Msg { return tickMsg(t) }))
+		return m, tea.Batch(m.startStream(ch, prompt, history[:len(history)-1]), waitStream(ch), m.working.Tick)
 	}
 	return m, nil
 }
@@ -520,6 +555,89 @@ func (m model) handleChatKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	return m, nil, false
 }
 
+func (m model) executeTools(inputTokens, outputTokens int) (tea.Model, tea.Cmd) {
+	// Save assistant message with tool calls
+	toolCallsJSON, _ := json.Marshal(m.pendingTools)
+	if err := m.store.AddMessageWithTools(m.session.ID, "assistant", strings.TrimSpace(m.streamText), string(toolCallsJSON), ""); err != nil {
+		m.err = err.Error()
+		return m, nil
+	}
+
+	// Execute tools
+	m.toolResults = make([]string, 0, len(m.pendingTools))
+	for _, call := range m.pendingTools {
+		tool, ok := m.toolRegistry.Get(call.Function.Name)
+		if !ok {
+			result := fmt.Sprintf("Tool %q not found", call.Function.Name)
+			m.toolResults = append(m.toolResults, result)
+			if err := m.store.AddMessageWithTools(m.session.ID, "tool", result, "", call.ID); err != nil {
+				m.err = err.Error()
+			}
+			continue
+		}
+
+		// Check if auto-execute is allowed
+		if !m.cfg.Tools.AutoExecute && tool.SafetyLevel() != tools.SafetyLevelSafe {
+			result := fmt.Sprintf("Tool %q requires manual approval (auto-execute disabled)", call.Function.Name)
+			m.toolResults = append(m.toolResults, result)
+			if err := m.store.AddMessageWithTools(m.session.ID, "tool", result, "", call.ID); err != nil {
+				m.err = err.Error()
+			}
+			continue
+		}
+
+		// Parse arguments
+		var args map[string]any
+		if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
+			result := fmt.Sprintf("Failed to parse arguments: %v", err)
+			m.toolResults = append(m.toolResults, result)
+			if err := m.store.AddMessageWithTools(m.session.ID, "tool", result, "", call.ID); err != nil {
+				m.err = err.Error()
+			}
+			continue
+		}
+
+		// Execute tool
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		result, err := tool.Execute(ctx, args)
+		cancel()
+
+		if err != nil {
+			result = fmt.Sprintf("Tool error: %v", err)
+		}
+
+		m.toolResults = append(m.toolResults, result)
+		if err := m.store.AddMessageWithTools(m.session.ID, "tool", result, "", call.ID); err != nil {
+			m.err = err.Error()
+		}
+	}
+
+	// Update tokens
+	if err := m.store.AddSessionTokens(m.session.ID, inputTokens, outputTokens); err != nil {
+		m.err = err.Error()
+		return m, nil
+	}
+	m.session.InputTokens += inputTokens
+	m.session.OutputTokens += outputTokens
+
+	// Reload messages and continue conversation with tool results
+	m.messages, _ = m.store.Messages(m.session.ID)
+	m.streamText = ""
+	m.reqIn = 0
+	m.reqOut = 0
+	m.renderMessages()
+
+	// Start new stream with tool results
+	m.thinking = true
+	m.streamAt = time.Now()
+	m.status = "processing tool results"
+	ch := make(chan streamEvent, 64)
+	m.stream = ch
+	m.pendingTools = nil
+
+	return m, tea.Batch(m.startStream(ch, "", m.messages), waitStream(ch), m.working.Tick)
+}
+
 func (m model) recallHistory(delta int) model {
 	history := m.userPrompts()
 	if len(history) == 0 {
@@ -606,10 +724,25 @@ func (m model) startStream(ch chan<- streamEvent, prompt string, history []stora
 		go func() {
 			defer close(ch)
 			client := llm.New(m.cfg.Active())
-			usage, err := client.Stream(context.Background(), history, prompt, func(delta string) {
-				ch <- streamEvent{chunk: delta}
+
+			// Add tools if enabled
+			if m.cfg.Tools.Enabled && m.toolRegistry != nil {
+				toolDefs := m.toolRegistry.ToOpenAIFormat()
+				if strings.ToLower(m.cfg.Active().Type) == "ollama" {
+					toolDefs = m.toolRegistry.ToOllamaFormat()
+				}
+				client = client.WithTools(toolDefs)
+			}
+
+			usage, err := client.Stream(context.Background(), history, prompt, func(event llm.StreamEvent) {
+				switch event.Type {
+				case "content":
+					ch <- streamEvent{eventType: "content", chunk: event.Content}
+				case "tool_call":
+					ch <- streamEvent{eventType: "tool_call", toolCalls: event.ToolCalls}
+				}
 			})
-			ch <- streamEvent{usage: usage, err: err, done: true}
+			ch <- streamEvent{eventType: "done", usage: usage, err: err, done: true}
 		}()
 		return nil
 	}
@@ -638,21 +771,57 @@ func (m *model) renderMessages() {
 	var b strings.Builder
 	if len(m.messages) == 0 {
 		b.WriteString(m.styles.system.Render("W34Zl Ch4T is ready. Local providers only."))
+		if m.cfg.Tools.Enabled {
+			b.WriteString("\n")
+			b.WriteString(m.styles.system.Render("Tools enabled: " + strings.Join(m.getToolNames(), ", ")))
+		}
 	} else {
 		for _, msg := range m.messages {
+			if msg.Role == "tool" {
+				// Display tool result
+				label := m.styles.system.Render("🔧 tool")
+				b.WriteString(label)
+				b.WriteString("\n")
+				b.WriteString(wrapText(msg.Content, m.viewport.Width))
+				b.WriteString("\n\n")
+				continue
+			}
+
 			label := m.styles.user.Render("you")
 			if msg.Role == "assistant" {
 				label = m.styles.assistant.Render("ai")
 			}
 			b.WriteString(label)
 			b.WriteString("\n")
-			b.WriteString(wrapText(msg.Content, m.viewport.Width))
+
+			// Show tool calls if present
+			if msg.ToolCalls != "" && msg.Role == "assistant" {
+				var toolCalls []llm.ToolCall
+				if err := json.Unmarshal([]byte(msg.ToolCalls), &toolCalls); err == nil {
+					for _, tc := range toolCalls {
+						toolLabel := m.styles.system.Render(fmt.Sprintf("🔧 calling: %s", tc.Function.Name))
+						b.WriteString(toolLabel)
+						b.WriteString("\n")
+					}
+				}
+			}
+
+			if msg.Content != "" {
+				b.WriteString(wrapText(msg.Content, m.viewport.Width))
+			}
 			b.WriteString("\n\n")
 		}
 	}
 	if m.thinking {
 		b.WriteString(m.styles.assistant.Render("ai"))
 		b.WriteString("\n")
+		if len(m.pendingTools) > 0 {
+			for _, tc := range m.pendingTools {
+				toolLabel := m.styles.system.Render(fmt.Sprintf("🔧 calling: %s", tc.Function.Name))
+				b.WriteString(toolLabel)
+				b.WriteString("\n")
+			}
+		}
 		if m.streamText == "" {
 			b.WriteString(m.thinkingView())
 		} else {
@@ -664,10 +833,20 @@ func (m *model) renderMessages() {
 	m.viewport.GotoBottom()
 }
 
+func (m model) getToolNames() []string {
+	if m.toolRegistry == nil {
+		return nil
+	}
+	tools := m.toolRegistry.List()
+	names := make([]string, len(tools))
+	for i, tool := range tools {
+		names[i] = tool.Name()
+	}
+	return names
+}
+
 func (m model) thinkingView() string {
-	frames := []string{"<*>", "<+>", "<x>", "<#>", "<@>", "<#>", "<x>", "<+>"}
-	bars := []string{"░▒▓", "▒▓█", "▓█▓", "█▓▒", "▓▒░", "▒░▒"}
-	return fmt.Sprintf("%s %s model is thinking %s", m.styles.header.Render(frames[m.tick%len(frames)]), m.styles.assistant.Render(bars[m.tick%len(bars)]), m.styles.header.Render(frames[(m.tick+3)%len(frames)]))
+	return fmt.Sprintf("%s model is thinking", m.working.View())
 }
 
 func (m model) metricsView() string {
