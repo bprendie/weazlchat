@@ -60,6 +60,12 @@ Press `ctrl+t` to ask the active model to summarize the current conversation int
 
 WeazlChat automatically trims context when the estimate reaches 97% of the configured context window. The current user prompt stays outside the checkpoint and is sent normally after the trim finishes.
 
+## TUI Feedback
+
+Model responses use Bubble spinner animations with rotating status phrases such as `hacking_the_gibson` and `jacking_into_the_matrix`. The phrase stays stable for short responses and changes only a couple of times during longer generations.
+
+Tool calls stay compact in the transcript as `🔧 using tools`, while context checkpointing uses a distinct compaction animation so it is clear when WeazlChat is summarizing older history instead of waiting on a normal response.
+
 ## Paste And Copy
 
 Large pasted blocks are stored as the full prompt payload but shown compactly in the input bar as `[PASTED n lines]`.
