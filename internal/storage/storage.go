@@ -61,6 +61,14 @@ type Memory struct {
 	UpdatedAt time.Time
 }
 
+type ContextCheckpoint struct {
+	ID               int64
+	SessionID        string
+	ThroughMessageID int64
+	Summary          string
+	CreatedAt        time.Time
+}
+
 func Open(path string) (*Store, error) {
 	if err := mkdirFor(path); err != nil {
 		return nil, err
@@ -114,9 +122,17 @@ func (s *Store) Migrate() error {
 			created_at datetime not null default current_timestamp,
 			updated_at datetime not null default current_timestamp
 		)`,
+		`create table if not exists context_checkpoints (
+			id integer primary key autoincrement,
+			session_id text not null references sessions(id) on delete cascade,
+			through_message_id integer not null,
+			summary text not null,
+			created_at datetime not null default current_timestamp
+		)`,
 		`create index if not exists idx_messages_session on messages(session_id, id)`,
 		`create index if not exists idx_sessions_updated on sessions(updated_at desc)`,
 		`create index if not exists idx_memories_updated on memories(updated_at desc)`,
+		`create index if not exists idx_context_checkpoints_session on context_checkpoints(session_id, id desc)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
@@ -277,6 +293,10 @@ func (s *Store) Messages(sessionID string) ([]Message, error) {
 		return nil, err
 	}
 	defer rows.Close()
+	return s.scanMessages(rows)
+}
+
+func (s *Store) scanMessages(rows *sql.Rows) ([]Message, error) {
 	var messages []Message
 	for rows.Next() {
 		var msg Message
@@ -285,10 +305,11 @@ func (s *Store) Messages(sessionID string) ([]Message, error) {
 		if err := rows.Scan(&msg.ID, &msg.SessionID, &msg.Role, &enc, &toolCalls, &toolCallID, &msg.CreatedAt); err != nil {
 			return nil, err
 		}
-		msg.Content, err = s.decrypt(enc)
+		content, err := s.decrypt(enc)
 		if err != nil {
 			return nil, err
 		}
+		msg.Content = content
 		if toolCalls.Valid {
 			msg.ToolCalls = toolCalls.String
 		}
@@ -298,6 +319,53 @@ func (s *Store) Messages(sessionID string) ([]Message, error) {
 		messages = append(messages, msg)
 	}
 	return messages, rows.Err()
+}
+
+func (s *Store) MessagesAfter(sessionID string, afterID int64) ([]Message, error) {
+	if !s.unlocked {
+		return nil, errors.New("database is locked")
+	}
+	rows, err := s.db.Query(`select id, session_id, role, content, tool_calls, tool_call_id, created_at from messages where session_id = ? and id > ? order by id`, sessionID, afterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return s.scanMessages(rows)
+}
+
+func (s *Store) SaveContextCheckpoint(sessionID string, throughMessageID int64, summary string) error {
+	if !s.unlocked {
+		return errors.New("database is locked")
+	}
+	blob, err := s.encrypt(summary)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(
+		`insert into context_checkpoints (session_id, through_message_id, summary) values (?, ?, ?)`,
+		sessionID, throughMessageID, blob,
+	)
+	return err
+}
+
+func (s *Store) LatestContextCheckpoint(sessionID string) (ContextCheckpoint, bool, error) {
+	if !s.unlocked {
+		return ContextCheckpoint{}, false, errors.New("database is locked")
+	}
+	row := s.db.QueryRow(`select id, session_id, through_message_id, summary, created_at from context_checkpoints where session_id = ? order by id desc limit 1`, sessionID)
+	var cp ContextCheckpoint
+	var enc string
+	if err := row.Scan(&cp.ID, &cp.SessionID, &cp.ThroughMessageID, &enc, &cp.CreatedAt); errors.Is(err, sql.ErrNoRows) {
+		return ContextCheckpoint{}, false, nil
+	} else if err != nil {
+		return ContextCheckpoint{}, false, err
+	}
+	summary, err := s.decrypt(enc)
+	if err != nil {
+		return ContextCheckpoint{}, false, err
+	}
+	cp.Summary = summary
+	return cp, true, nil
 }
 
 func (s *Store) SaveWorkspace(name, sessionID, snapshot string) error {

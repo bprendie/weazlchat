@@ -76,6 +76,30 @@ func (c Client) Stream(ctx context.Context, history []storage.Message, prompt st
 	}
 }
 
+func (c Client) Summarize(ctx context.Context, transcript string, targetTokens int) (string, error) {
+	if targetTokens <= 0 {
+		targetTokens = 500
+	}
+	messages := []ChatMessage{
+		{
+			Role:    "system",
+			Content: "You summarize conversation history for future context. Preserve user goals, decisions, facts, tool results, file paths, commands, unresolved tasks, and important constraints. Be concise and do not invent details.",
+		},
+		{
+			Role:    "user",
+			Content: fmt.Sprintf("Create a compact checkpoint summary of this conversation in about %d tokens. This summary will replace the earlier messages in context.\n\n%s", targetTokens, transcript),
+		},
+	}
+	switch strings.ToLower(c.provider.Type) {
+	case "vllm":
+		return c.completeOpenAICompat(ctx, messages, targetTokens+200)
+	case "ollama":
+		return c.completeOllama(ctx, messages, targetTokens+200)
+	default:
+		return "", fmt.Errorf("unsupported provider type %q", c.provider.Type)
+	}
+}
+
 func chatMessages(history []storage.Message, prompt string) []ChatMessage {
 	messages := make([]ChatMessage, 0, len(history)+1)
 	for _, msg := range history {
@@ -291,6 +315,71 @@ func (c Client) streamOllama(ctx context.Context, messages []ChatMessage, onEven
 		}
 	}
 	return usage, nil
+}
+
+func (c Client) completeOpenAICompat(ctx context.Context, messages []ChatMessage, maxTokens int) (string, error) {
+	reqBody := map[string]any{
+		"model":       c.provider.Model,
+		"messages":    messages,
+		"temperature": 0.2,
+		"stream":      false,
+		"max_tokens":  maxTokens,
+	}
+	resp, err := c.post(ctx, "/v1/chat/completions", reqBody)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return "", err
+	}
+	if body.Error != nil {
+		return "", errors.New(body.Error.Message)
+	}
+	if len(body.Choices) == 0 {
+		return "", errors.New("empty completion response")
+	}
+	return strings.TrimSpace(body.Choices[0].Message.Content), nil
+}
+
+func (c Client) completeOllama(ctx context.Context, messages []ChatMessage, maxTokens int) (string, error) {
+	reqBody := map[string]any{
+		"model":    c.provider.Model,
+		"messages": messages,
+		"stream":   false,
+		"options": map[string]any{
+			"num_predict": maxTokens,
+			"temperature": 0.2,
+		},
+	}
+	resp, err := c.post(ctx, "/api/chat", reqBody)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return "", err
+	}
+	if body.Error != "" {
+		return "", errors.New(body.Error)
+	}
+	return strings.TrimSpace(body.Message.Content), nil
 }
 
 func (c Client) post(ctx context.Context, path string, body any) (*http.Response, error) {

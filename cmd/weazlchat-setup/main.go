@@ -129,9 +129,10 @@ func writeConfig(cfgPath string, cfg config.Config, providerType, serverURL, mod
 	}
 	cfg.ActiveProvider = providerID
 	cfg.Providers[providerID] = config.Provider{
-		Type:      providerType,
-		ServerURL: serverURL,
-		Model:     model,
+		Type:          providerType,
+		ServerURL:     serverURL,
+		Model:         model,
+		ContextWindow: 8192,
 	}
 	if err := config.Save(cfgPath, cfg); err != nil {
 		return err

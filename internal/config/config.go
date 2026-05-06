@@ -18,10 +18,11 @@ type Config struct {
 }
 
 type Provider struct {
-	Type      string `json:"type"`
-	ServerURL string `json:"server_url"`
-	Model     string `json:"model"`
-	APIKey    string `json:"api_key,omitempty"`
+	Type          string `json:"type"`
+	ServerURL     string `json:"server_url"`
+	Model         string `json:"model"`
+	APIKey        string `json:"api_key,omitempty"`
+	ContextWindow int    `json:"context_window,omitempty"`
 }
 
 type Database struct {
@@ -84,14 +85,16 @@ func Default() Config {
 		ActiveProvider: "local-vllm",
 		Providers: map[string]Provider{
 			"local-vllm": {
-				Type:      "vllm",
-				ServerURL: "http://localhost:8000",
-				Model:     "local-model",
+				Type:          "vllm",
+				ServerURL:     "http://localhost:8000",
+				Model:         "local-model",
+				ContextWindow: 8192,
 			},
 			"local-ollama": {
-				Type:      "ollama",
-				ServerURL: "http://localhost:11434",
-				Model:     "llama3.1",
+				Type:          "ollama",
+				ServerURL:     "http://localhost:11434",
+				Model:         "llama3.1",
+				ContextWindow: 8192,
 			},
 		},
 		Database: Database{Path: filepath.Join(dataDir, "weazlchat.sqlite3")},
@@ -123,6 +126,12 @@ func (c *Config) withDefaults() {
 	}
 	if c.Providers == nil || len(c.Providers) == 0 {
 		c.Providers = def.Providers
+	}
+	for name, provider := range c.Providers {
+		if provider.ContextWindow <= 0 {
+			provider.ContextWindow = 8192
+			c.Providers[name] = provider
+		}
 	}
 	if c.Database.Path == "" {
 		c.Database.Path = def.Database.Path

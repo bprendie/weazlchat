@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -32,35 +33,39 @@ const (
 )
 
 type model struct {
-	cfg          config.Config
-	cfgPath      string
-	store        *storage.Store
-	toolRegistry *tools.Registry
-	styles       styles
-	mode         mode
-	width        int
-	height       int
-	input        textinput.Model
-	viewport     viewport.Model
-	sessions     list.Model
-	workspaces   list.Model
-	working      spinner.Model
-	session      storage.Session
-	messages     []storage.Message
-	err          string
-	status       string
-	thinking     bool
-	stream       <-chan streamEvent
-	streamText   string
-	streamAt     time.Time
-	reqIn        int
-	reqOut       int
-	pasteText    string
-	pasteLines   int
-	historyIdx   int
-	historyDraft string
-	pendingTools []llm.ToolCall
-	toolResults  []string
+	cfg           config.Config
+	cfgPath       string
+	store         *storage.Store
+	toolRegistry  *tools.Registry
+	styles        styles
+	mode          mode
+	width         int
+	height        int
+	input         textinput.Model
+	viewport      viewport.Model
+	sessions      list.Model
+	workspaces    list.Model
+	working       spinner.Model
+	contextBar    progress.Model
+	session       storage.Session
+	messages      []storage.Message
+	checkpoint    storage.ContextCheckpoint
+	hasCheckpoint bool
+	err           string
+	status        string
+	thinking      bool
+	trimming      bool
+	stream        <-chan streamEvent
+	streamText    string
+	streamAt      time.Time
+	reqIn         int
+	reqOut        int
+	pasteText     string
+	pasteLines    int
+	historyIdx    int
+	historyDraft  string
+	pendingTools  []llm.ToolCall
+	toolResults   []string
 }
 
 type streamEvent struct {
@@ -70,6 +75,15 @@ type streamEvent struct {
 	usage     llm.Usage
 	err       error
 	done      bool
+}
+
+type contextTrimMsg struct {
+	auto            bool
+	prompt          string
+	currentPromptID int64
+	throughID       int64
+	summary         string
+	err             error
 }
 
 type sessionItem struct {
@@ -107,6 +121,7 @@ func New(cfg config.Config, cfgPath string, store *storage.Store, toolRegistry *
 		spinner.WithSpinner(spinner.MiniDot),
 		spinner.WithStyle(s.assistant),
 	)
+	contextBar := progress.New(progress.WithDefaultGradient(), progress.WithoutPercentage())
 
 	return model{
 		cfg:          cfg,
@@ -120,6 +135,7 @@ func New(cfg config.Config, cfgPath string, store *storage.Store, toolRegistry *
 		sessions:     sessions,
 		workspaces:   workspaces,
 		working:      working,
+		contextBar:   contextBar,
 		status:       "private local chat",
 	}
 }
@@ -167,6 +183,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+s":
 			if m.mode == modeChat {
 				m.saveWorkspace()
+			}
+		case "ctrl+t":
+			if m.mode == modeChat && !m.thinking {
+				return m.trimContext(false, "", 0, 0)
 			}
 		case "ctrl+r":
 			if m.mode == modeChat {
@@ -268,6 +288,38 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.reqOut = 0
 		m.renderMessages()
 		m.status = "ready"
+		return m, nil
+	case contextTrimMsg:
+		m.trimming = false
+		m.thinking = false
+		if msg.err != nil {
+			m.err = msg.err.Error()
+			m.status = "context trim failed"
+			m.renderMessages()
+			return m, nil
+		}
+		m.err = ""
+		m.refreshCheckpoint()
+		if msg.auto {
+			m.status = "streaming"
+			m.thinking = true
+			m.streamText = ""
+			m.streamAt = time.Now()
+			m.reqIn = m.contextTokenEstimate()
+			m.reqOut = 0
+			ch := make(chan streamEvent, 64)
+			m.stream = ch
+			history, err := m.contextHistoryForPrompt(msg.currentPromptID)
+			if err != nil {
+				m.thinking = false
+				m.err = err.Error()
+				m.status = "request failed"
+				return m, nil
+			}
+			return m, tea.Batch(m.startStream(ch, msg.prompt, history), waitStream(ch), m.working.Tick)
+		}
+		m.status = fmt.Sprintf("context trimmed through message %d", msg.throughID)
+		m.renderMessages()
 		return m, nil
 	case spinner.TickMsg:
 		if m.thinking {
@@ -398,16 +450,25 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		}
 		m.messages = history
 		m.renderMessages()
+		currentPromptID := history[len(history)-1].ID
+		if m.shouldAutoTrim(history) {
+			return m.trimContext(true, prompt, currentPromptID, history[len(history)-2].ID)
+		}
+		contextHistory, err := m.contextHistoryForPrompt(currentPromptID)
+		if err != nil {
+			m.err = err.Error()
+			return m, nil
+		}
 		m.thinking = true
 		m.streamText = ""
 		m.streamAt = time.Now()
-		m.reqIn = estimateMessages(history)
+		m.reqIn = estimateMessages(contextHistory) + estimateTokens(prompt)
 		m.reqOut = 0
 		m.err = ""
 		m.status = "streaming"
 		ch := make(chan streamEvent, 64)
 		m.stream = ch
-		return m, tea.Batch(m.startStream(ch, prompt, history[:len(history)-1]), waitStream(ch), m.working.Tick)
+		return m, tea.Batch(m.startStream(ch, prompt, contextHistory), waitStream(ch), m.working.Tick)
 	}
 	return m, nil
 }
@@ -437,6 +498,8 @@ func (m model) newSession() (tea.Model, tea.Cmd) {
 	}
 	m.session = sess
 	m.messages = nil
+	m.checkpoint = storage.ContextCheckpoint{}
+	m.hasCheckpoint = false
 	m.historyIdx = 0
 	m.historyDraft = ""
 	m.mode = modeChat
@@ -453,6 +516,7 @@ func (m model) loadSession(sess storage.Session) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.messages = msgs
+	m.refreshCheckpoint()
 	m.historyIdx = 0
 	m.historyDraft = ""
 	m.mode = modeChat
@@ -623,8 +687,13 @@ func (m model) executeTools(inputTokens, outputTokens int) (tea.Model, tea.Cmd) 
 
 	// Reload messages and continue conversation with tool results
 	m.messages, _ = m.store.Messages(m.session.ID)
+	contextHistory, err := m.contextHistoryForContinuation()
+	if err != nil {
+		m.err = err.Error()
+		return m, nil
+	}
 	m.streamText = ""
-	m.reqIn = 0
+	m.reqIn = estimateMessages(contextHistory)
 	m.reqOut = 0
 	m.renderMessages()
 
@@ -636,7 +705,7 @@ func (m model) executeTools(inputTokens, outputTokens int) (tea.Model, tea.Cmd) 
 	m.stream = ch
 	m.pendingTools = nil
 
-	return m, tea.Batch(m.startStream(ch, "", m.messages), waitStream(ch), m.working.Tick)
+	return m, tea.Batch(m.startStream(ch, "", contextHistory), waitStream(ch), m.working.Tick)
 }
 
 func (m model) recallHistory(delta int) model {
@@ -703,6 +772,177 @@ func (m model) chatPrompt() string {
 	return prefix + "\n\n" + m.pasteText
 }
 
+func (m model) trimContext(auto bool, prompt string, currentPromptID, throughID int64) (tea.Model, tea.Cmd) {
+	if m.session.ID == "" || len(m.messages) == 0 {
+		m.status = "nothing to trim"
+		return m, nil
+	}
+	if throughID == 0 {
+		throughID = m.messages[len(m.messages)-1].ID
+	}
+	if throughID <= 0 {
+		m.status = "nothing to trim"
+		return m, nil
+	}
+	toSummarize := make([]storage.Message, 0, len(m.messages))
+	if m.hasCheckpoint {
+		if throughID <= m.checkpoint.ThroughMessageID {
+			m.status = "context already trimmed"
+			return m, nil
+		}
+		toSummarize = append(toSummarize, storage.Message{
+			SessionID: m.session.ID,
+			Role:      "system",
+			Content:   "Previous checkpoint summary:\n" + m.checkpoint.Summary,
+		})
+	}
+	for _, msg := range m.messages {
+		if msg.ID <= throughID && (!m.hasCheckpoint || msg.ID > m.checkpoint.ThroughMessageID) {
+			toSummarize = append(toSummarize, msg)
+		}
+	}
+	if len(toSummarize) == 0 {
+		m.status = "nothing to trim"
+		return m, nil
+	}
+	m.thinking = true
+	m.trimming = true
+	m.streamText = ""
+	m.streamAt = time.Now()
+	m.reqIn = estimateMessages(toSummarize)
+	m.reqOut = 0
+	m.err = ""
+	m.status = "trimming context"
+	return m, summarizeContext(m.cfg.Active(), m.store, m.session.ID, toSummarize, auto, prompt, currentPromptID, throughID)
+}
+
+func summarizeContext(provider config.Provider, store *storage.Store, sessionID string, messages []storage.Message, auto bool, prompt string, currentPromptID, throughID int64) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		client := llm.New(provider)
+		summary, err := client.Summarize(ctx, transcriptForSummary(messages), 500)
+		if err == nil {
+			err = store.SaveContextCheckpoint(sessionID, throughID, summary)
+		}
+		return contextTrimMsg{
+			auto:            auto,
+			prompt:          prompt,
+			currentPromptID: currentPromptID,
+			throughID:       throughID,
+			summary:         summary,
+			err:             err,
+		}
+	}
+}
+
+func (m *model) refreshCheckpoint() {
+	m.checkpoint = storage.ContextCheckpoint{}
+	m.hasCheckpoint = false
+	if m.session.ID == "" {
+		return
+	}
+	cp, ok, err := m.store.LatestContextCheckpoint(m.session.ID)
+	if err != nil {
+		m.err = err.Error()
+		return
+	}
+	m.checkpoint = cp
+	m.hasCheckpoint = ok
+}
+
+func (m model) contextHistoryForPrompt(currentPromptID int64) ([]storage.Message, error) {
+	history, err := m.contextHistory()
+	if err != nil {
+		return nil, err
+	}
+	filtered := history[:0]
+	for _, msg := range history {
+		if msg.ID != currentPromptID {
+			filtered = append(filtered, msg)
+		}
+	}
+	return filtered, nil
+}
+
+func (m model) contextHistoryForContinuation() ([]storage.Message, error) {
+	return m.contextHistory()
+}
+
+func (m model) contextHistory() ([]storage.Message, error) {
+	if !m.hasCheckpoint {
+		return append([]storage.Message(nil), m.messages...), nil
+	}
+	after, err := m.store.MessagesAfter(m.session.ID, m.checkpoint.ThroughMessageID)
+	if err != nil {
+		return nil, err
+	}
+	history := make([]storage.Message, 0, len(after)+1)
+	history = append(history, storage.Message{
+		SessionID: m.session.ID,
+		Role:      "system",
+		Content:   "Conversation checkpoint summary:\n" + m.checkpoint.Summary,
+	})
+	history = append(history, after...)
+	return history, nil
+}
+
+func (m model) shouldAutoTrim(history []storage.Message) bool {
+	if len(history) < 2 {
+		return false
+	}
+	return float64(m.contextTokenEstimateFor(history))/float64(m.contextBudget()) >= 0.97
+}
+
+func (m model) contextTokenEstimate() int {
+	return m.contextTokenEstimateFor(m.messages)
+}
+
+func (m model) contextTokenEstimateFor(messages []storage.Message) int {
+	total := 0
+	if m.hasCheckpoint {
+		total += estimateTokens(m.checkpoint.Summary)
+		for _, msg := range messages {
+			if msg.ID > m.checkpoint.ThroughMessageID {
+				total += estimateTokens(msg.Content)
+				total += estimateTokens(msg.ToolCalls)
+			}
+		}
+		return total
+	}
+	return estimateMessages(messages)
+}
+
+func (m model) contextBudget() int {
+	if p := m.cfg.Active(); p.ContextWindow > 0 {
+		return p.ContextWindow
+	}
+	return 8192
+}
+
+func transcriptForSummary(messages []storage.Message) string {
+	var b strings.Builder
+	for _, msg := range messages {
+		b.WriteString(strings.ToUpper(msg.Role))
+		if msg.ToolCallID != "" {
+			b.WriteString(" tool_call_id=")
+			b.WriteString(msg.ToolCallID)
+		}
+		b.WriteString(":\n")
+		if msg.Content != "" {
+			b.WriteString(msg.Content)
+			b.WriteString("\n")
+		}
+		if msg.ToolCalls != "" {
+			b.WriteString("tool_calls: ")
+			b.WriteString(msg.ToolCalls)
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
 func (m model) inputView() string {
 	if m.pasteText == "" {
 		return m.input.View()
@@ -766,6 +1006,7 @@ func (m *model) resize() {
 	m.viewport.Height = h
 	m.sessions.SetSize(w, h+4)
 	m.workspaces.SetSize(w, h+4)
+	m.contextBar.Width = min(28, max(10, w/4))
 }
 
 func (m *model) renderMessages() {
@@ -826,6 +1067,9 @@ func (m model) getToolNames() []string {
 }
 
 func (m model) thinkingView() string {
+	if m.trimming {
+		return fmt.Sprintf("%s trimming context", m.working.View())
+	}
 	return fmt.Sprintf("%s model is thinking", m.working.View())
 }
 
@@ -839,7 +1083,10 @@ func (m model) metricsView() string {
 			tps = float64(m.reqOut) / elapsed
 		}
 	}
-	text := fmt.Sprintf("in %d  out %d  %.1f t/s", totalIn, totalOut, tps)
+	budget := m.contextBudget()
+	contextTokens := m.contextTokenEstimate()
+	pct := min(1.0, float64(contextTokens)/float64(budget))
+	text := fmt.Sprintf("ctx %s %d/%d  in %d  out %d  %.1f t/s", m.contextBar.ViewAs(pct), contextTokens, budget, totalIn, totalOut, tps)
 	width := max(20, m.width-6)
 	if len(text) < width {
 		text = strings.Repeat(" ", width-len(text)) + text
@@ -851,7 +1098,7 @@ func (m model) helpText() string {
 	if m.mode == modeSessions {
 		return "enter resume | ctrl+d delete session | esc back | ctrl+c quit"
 	}
-	return "enter send/select | up/down history | pgup/pgdn scroll | ctrl+r sessions | ctrl+s save | ctrl+c quit"
+	return "enter send/select | up/down history | pgup/pgdn scroll | ctrl+t trim | ctrl+r sessions | ctrl+s save | ctrl+c quit"
 }
 
 func ansiHeader() string {
