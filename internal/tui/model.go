@@ -778,12 +778,6 @@ func (m *model) renderMessages() {
 	} else {
 		for _, msg := range m.messages {
 			if msg.Role == "tool" {
-				// Display tool result
-				label := m.styles.system.Render("🔧 tool")
-				b.WriteString(label)
-				b.WriteString("\n")
-				b.WriteString(wrapText(msg.Content, m.viewport.Width))
-				b.WriteString("\n\n")
 				continue
 			}
 
@@ -794,18 +788,6 @@ func (m *model) renderMessages() {
 			b.WriteString(label)
 			b.WriteString("\n")
 
-			// Show tool calls if present
-			if msg.ToolCalls != "" && msg.Role == "assistant" {
-				var toolCalls []llm.ToolCall
-				if err := json.Unmarshal([]byte(msg.ToolCalls), &toolCalls); err == nil {
-					for _, tc := range toolCalls {
-						toolLabel := m.styles.system.Render(fmt.Sprintf("🔧 calling: %s", tc.Function.Name))
-						b.WriteString(toolLabel)
-						b.WriteString("\n")
-					}
-				}
-			}
-
 			if msg.Content != "" {
 				b.WriteString(wrapText(msg.Content, m.viewport.Width))
 			}
@@ -815,13 +797,6 @@ func (m *model) renderMessages() {
 	if m.thinking {
 		b.WriteString(m.styles.assistant.Render("ai"))
 		b.WriteString("\n")
-		if len(m.pendingTools) > 0 {
-			for _, tc := range m.pendingTools {
-				toolLabel := m.styles.system.Render(fmt.Sprintf("🔧 calling: %s", tc.Function.Name))
-				b.WriteString(toolLabel)
-				b.WriteString("\n")
-			}
-		}
 		if m.streamText == "" {
 			b.WriteString(m.thinkingView())
 		} else {
