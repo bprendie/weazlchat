@@ -88,13 +88,13 @@ func Default() Config {
 				Type:          "vllm",
 				ServerURL:     "http://localhost:8000",
 				Model:         "local-model",
-				ContextWindow: 8192,
+				ContextWindow: 32768,
 			},
 			"local-ollama": {
 				Type:          "ollama",
 				ServerURL:     "http://localhost:11434",
 				Model:         "llama3.1",
-				ContextWindow: 8192,
+				ContextWindow: 32768,
 			},
 		},
 		Database: Database{Path: filepath.Join(dataDir, "weazlchat.sqlite3")},
@@ -129,7 +129,7 @@ func (c *Config) withDefaults() {
 	}
 	for name, provider := range c.Providers {
 		if provider.ContextWindow <= 0 {
-			provider.ContextWindow = 8192
+			provider.ContextWindow = 32768
 			c.Providers[name] = provider
 		}
 	}

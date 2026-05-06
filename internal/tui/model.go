@@ -821,7 +821,7 @@ func summarizeContext(provider config.Provider, store *storage.Store, sessionID 
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 		client := llm.New(provider)
-		summary, err := client.Summarize(ctx, transcriptForSummary(messages), 500)
+		summary, err := client.Summarize(ctx, transcriptForSummary(messages), summaryTargetTokens(provider.ContextWindow))
 		if err == nil {
 			err = store.SaveContextCheckpoint(sessionID, throughID, summary)
 		}
@@ -917,7 +917,14 @@ func (m model) contextBudget() int {
 	if p := m.cfg.Active(); p.ContextWindow > 0 {
 		return p.ContextWindow
 	}
-	return 8192
+	return 32768
+}
+
+func summaryTargetTokens(contextWindow int) int {
+	if contextWindow <= 0 {
+		contextWindow = 32768
+	}
+	return min(2000, max(500, contextWindow/32))
 }
 
 func transcriptForSummary(messages []storage.Message) string {

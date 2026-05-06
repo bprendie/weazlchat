@@ -83,11 +83,11 @@ func (c Client) Summarize(ctx context.Context, transcript string, targetTokens i
 	messages := []ChatMessage{
 		{
 			Role:    "system",
-			Content: "You summarize conversation history for future context. Preserve user goals, decisions, facts, tool results, file paths, commands, unresolved tasks, and important constraints. Be concise and do not invent details.",
+			Content: "You summarize conversation history for future context. Preserve user goals, decisions, durable facts, tool results, file paths, commands, unresolved tasks, and important constraints. Drop routine back-and-forth, duplicated text, and stale details. Be concise and do not invent details.",
 		},
 		{
 			Role:    "user",
-			Content: fmt.Sprintf("Create a compact checkpoint summary of this conversation in about %d tokens. This summary will replace the earlier messages in context.\n\n%s", targetTokens, transcript),
+			Content: fmt.Sprintf("Create a compact checkpoint summary of this conversation in about %d tokens. This summary will replace the earlier messages in context. Use short sections for current objective, decisions/constraints, important files or tool results, and open next steps when applicable.\n\n%s", targetTokens, transcript),
 		},
 	}
 	switch strings.ToLower(c.provider.Type) {

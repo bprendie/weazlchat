@@ -132,7 +132,7 @@ func writeConfig(cfgPath string, cfg config.Config, providerType, serverURL, mod
 		Type:          providerType,
 		ServerURL:     serverURL,
 		Model:         model,
-		ContextWindow: 8192,
+		ContextWindow: 32768,
 	}
 	if err := config.Save(cfgPath, cfg); err != nil {
 		return err

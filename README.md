@@ -54,9 +54,9 @@ The first run asks you to create a local history password. Session history and w
 
 ## Context Trimming
 
-The status line includes a Bubble Charm progress bar showing estimated context usage for the active provider. Configure the provider's `context_window` in `~/.config/weazlchat/config.json`; it defaults to `8192` tokens.
+The status line includes a Bubble Charm progress bar showing estimated context usage for the active provider. Configure the provider's `context_window` in `~/.config/weazlchat/config.json`; it defaults to `32768` tokens.
 
-Press `ctrl+t` to ask the active model to summarize the current conversation into a compact checkpoint of roughly 500 tokens. Future requests send that checkpoint summary plus only newer messages, instead of replaying the entire session from the beginning.
+Press `ctrl+t` to ask the active model to summarize the current conversation into a compact checkpoint. The summary target scales with the configured context window, bounded between 500 and 2000 tokens. Future requests send that checkpoint summary plus only newer messages, instead of replaying the entire session from the beginning.
 
 WeazlChat automatically trims context when the estimate reaches 97% of the configured context window. The current user prompt stays outside the checkpoint and is sent normally after the trim finishes.
 
