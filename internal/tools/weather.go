@@ -6,13 +6,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
 
-const weatherGovBaseURL = "https://api.weather.gov"
+const (
+	openMeteoGeocodingEndpoint = "https://geocoding-api.open-meteo.com/v1/search"
+	openMeteoForecastEndpoint  = "https://api.open-meteo.com/v1/forecast"
+)
 
-// WeatherTool fetches US weather forecasts from the National Weather Service.
+// WeatherTool fetches current weather and a short forecast from Open-Meteo.
 type WeatherTool struct {
 	client *http.Client
 }
@@ -28,34 +32,29 @@ func (t *WeatherTool) Name() string {
 }
 
 func (t *WeatherTool) Description() string {
-	return "Get a US National Weather Service forecast for latitude and longitude coordinates. The weather.gov API does not geocode city names"
+	return "Get current weather and a short forecast for a city or location name"
 }
 
 func (t *WeatherTool) Parameters() []Parameter {
 	return []Parameter{
 		{
-			Name:        "latitude",
-			Type:        "number",
-			Description: "Latitude for a US location, for example 40.7128",
-			Required:    true,
-		},
-		{
-			Name:        "longitude",
-			Type:        "number",
-			Description: "Longitude for a US location, for example -74.0060",
-			Required:    true,
-		},
-		{
-			Name:        "location_name",
+			Name:        "location",
 			Type:        "string",
-			Description: "Optional human-readable label for the coordinates",
+			Description: "City or location name, such as Boston, MA or Berlin",
+			Required:    true,
+		},
+		{
+			Name:        "days",
+			Type:        "number",
+			Description: "Number of forecast days from 1 to 7. Defaults to 3",
 			Required:    false,
 		},
 		{
-			Name:        "periods",
-			Type:        "number",
-			Description: "Number of forecast periods to return, from 1 to 8. Defaults to 4",
+			Name:        "temperature_unit",
+			Type:        "string",
+			Description: "Temperature unit: fahrenheit or celsius. Defaults to fahrenheit",
 			Required:    false,
+			Enum:        []any{"fahrenheit", "celsius"},
 		},
 	}
 }
@@ -65,118 +64,148 @@ func (t *WeatherTool) SafetyLevel() SafetyLevel {
 }
 
 func (t *WeatherTool) Execute(ctx context.Context, params map[string]any) (string, error) {
-	lat, err := getNumber(params, "latitude")
-	if err != nil {
-		return "", err
-	}
-	lon, err := getNumber(params, "longitude")
-	if err != nil {
-		return "", err
-	}
-	if lat < -90 || lat > 90 {
-		return "", fmt.Errorf("latitude must be between -90 and 90")
-	}
-	if lon < -180 || lon > 180 {
-		return "", fmt.Errorf("longitude must be between -180 and 180")
+	location, ok := params["location"].(string)
+	location = strings.TrimSpace(location)
+	if !ok || location == "" {
+		return "", fmt.Errorf("location parameter is required and must be a string")
 	}
 
-	periods := 4
-	if _, ok := params["periods"]; ok {
-		n, err := getNumber(params, "periods")
+	days := 3
+	if _, ok := params["days"]; ok {
+		n, err := getNumber(params, "days")
 		if err != nil {
 			return "", err
 		}
-		periods = int(n)
+		days = int(n)
 	}
-	if periods < 1 {
-		periods = 1
+	if days < 1 {
+		days = 1
 	}
-	if periods > 8 {
-		periods = 8
-	}
-
-	label, _ := params["location_name"].(string)
-	label = strings.TrimSpace(label)
-	if label == "" {
-		label = fmt.Sprintf("%.4f, %.4f", lat, lon)
+	if days > 7 {
+		days = 7
 	}
 
-	point, err := t.point(ctx, lat, lon)
+	tempUnit, _ := params["temperature_unit"].(string)
+	tempUnit = strings.ToLower(strings.TrimSpace(tempUnit))
+	if tempUnit == "" {
+		tempUnit = "fahrenheit"
+	}
+	if tempUnit != "fahrenheit" && tempUnit != "celsius" {
+		return "", fmt.Errorf("temperature_unit must be fahrenheit or celsius")
+	}
+
+	place, err := t.geocode(ctx, location)
 	if err != nil {
 		return "", err
 	}
-	forecast, err := t.forecast(ctx, point.Properties.Forecast)
+	forecast, err := t.forecast(ctx, place, days, tempUnit)
 	if err != nil {
 		return "", err
 	}
-	return formatNWSForecast(label, point, forecast, periods), nil
+	return formatWeather(place, forecast, tempUnit), nil
 }
 
-type nwsPoint struct {
-	Properties struct {
-		Forecast       string `json:"forecast"`
-		ForecastHourly string `json:"forecastHourly"`
-		RelativeURL    string `json:"@id"`
-		GridID         string `json:"gridId"`
-		GridX          int    `json:"gridX"`
-		GridY          int    `json:"gridY"`
-		City           string `json:"city"`
-		State          string `json:"state"`
-		RelativeLoc    struct {
-			Properties struct {
-				City     string `json:"city"`
-				State    string `json:"state"`
-				Distance struct {
-					Value float64 `json:"value"`
-					Unit  string  `json:"unitCode"`
-				} `json:"distance"`
-				Bearing struct {
-					Value float64 `json:"value"`
-					Unit  string  `json:"unitCode"`
-				} `json:"bearing"`
-			} `json:"properties"`
-		} `json:"relativeLocation"`
-	} `json:"properties"`
+type weatherPlace struct {
+	Name      string
+	Admin1    string
+	Country   string
+	Latitude  float64
+	Longitude float64
+	Timezone  string
 }
 
-type nwsForecast struct {
-	Properties struct {
-		GeneratedAt string `json:"generatedAt"`
-		Updated     string `json:"updated"`
-		Periods     []struct {
-			Name             string `json:"name"`
-			StartTime        string `json:"startTime"`
-			EndTime          string `json:"endTime"`
-			IsDaytime        bool   `json:"isDaytime"`
-			Temperature      int    `json:"temperature"`
-			TemperatureUnit  string `json:"temperatureUnit"`
-			WindSpeed        string `json:"windSpeed"`
-			WindDirection    string `json:"windDirection"`
-			ShortForecast    string `json:"shortForecast"`
-			DetailedForecast string `json:"detailedForecast"`
-		} `json:"periods"`
-	} `json:"properties"`
+type weatherForecast struct {
+	Current struct {
+		Time                string  `json:"time"`
+		Temperature2m       float64 `json:"temperature_2m"`
+		ApparentTemperature float64 `json:"apparent_temperature"`
+		Precipitation       float64 `json:"precipitation"`
+		WeatherCode         int     `json:"weather_code"`
+		WindSpeed10m        float64 `json:"wind_speed_10m"`
+		WindDirection10m    int     `json:"wind_direction_10m"`
+		RelativeHumidity2m  int     `json:"relative_humidity_2m"`
+	} `json:"current"`
+	CurrentUnits struct {
+		Temperature2m       string `json:"temperature_2m"`
+		ApparentTemperature string `json:"apparent_temperature"`
+		Precipitation       string `json:"precipitation"`
+		WindSpeed10m        string `json:"wind_speed_10m"`
+	} `json:"current_units"`
+	Daily struct {
+		Time             []string  `json:"time"`
+		WeatherCode      []int     `json:"weather_code"`
+		TemperatureMax   []float64 `json:"temperature_2m_max"`
+		TemperatureMin   []float64 `json:"temperature_2m_min"`
+		PrecipitationSum []float64 `json:"precipitation_sum"`
+	} `json:"daily"`
+	DailyUnits struct {
+		TemperatureMax   string `json:"temperature_2m_max"`
+		TemperatureMin   string `json:"temperature_2m_min"`
+		PrecipitationSum string `json:"precipitation_sum"`
+	} `json:"daily_units"`
 }
 
-func (t *WeatherTool) point(ctx context.Context, lat, lon float64) (nwsPoint, error) {
-	var point nwsPoint
-	url := fmt.Sprintf("%s/points/%.4f,%.4f", weatherGovBaseURL, lat, lon)
-	if err := t.getJSON(ctx, url, &point); err != nil {
-		return nwsPoint{}, err
+func (t *WeatherTool) geocode(ctx context.Context, location string) (weatherPlace, error) {
+	u, err := url.Parse(openMeteoGeocodingEndpoint)
+	if err != nil {
+		return weatherPlace{}, err
 	}
-	if point.Properties.Forecast == "" {
-		return nwsPoint{}, fmt.Errorf("weather.gov did not return a forecast URL for %.4f,%.4f", lat, lon)
+	q := u.Query()
+	q.Set("name", location)
+	q.Set("count", "1")
+	q.Set("language", "en")
+	q.Set("format", "json")
+	u.RawQuery = q.Encode()
+
+	var result struct {
+		Results []struct {
+			Name      string  `json:"name"`
+			Admin1    string  `json:"admin1"`
+			Country   string  `json:"country"`
+			Latitude  float64 `json:"latitude"`
+			Longitude float64 `json:"longitude"`
+			Timezone  string  `json:"timezone"`
+		} `json:"results"`
 	}
-	return point, nil
+	if err := t.getJSON(ctx, u.String(), &result); err != nil {
+		return weatherPlace{}, err
+	}
+	if len(result.Results) == 0 {
+		return weatherPlace{}, fmt.Errorf("no location found for %q", location)
+	}
+	first := result.Results[0]
+	return weatherPlace{
+		Name:      first.Name,
+		Admin1:    first.Admin1,
+		Country:   first.Country,
+		Latitude:  first.Latitude,
+		Longitude: first.Longitude,
+		Timezone:  first.Timezone,
+	}, nil
 }
 
-func (t *WeatherTool) forecast(ctx context.Context, forecastURL string) (nwsForecast, error) {
-	var forecast nwsForecast
-	if err := t.getJSON(ctx, forecastURL, &forecast); err != nil {
-		return nwsForecast{}, err
+func (t *WeatherTool) forecast(ctx context.Context, place weatherPlace, days int, tempUnit string) (weatherForecast, error) {
+	u, err := url.Parse(openMeteoForecastEndpoint)
+	if err != nil {
+		return weatherForecast{}, err
 	}
-	if len(forecast.Properties.Periods) == 0 {
-		return nwsForecast{}, fmt.Errorf("weather.gov returned no forecast periods")
+	q := u.Query()
+	q.Set("latitude", fmt.Sprintf("%.6f", place.Latitude))
+	q.Set("longitude", fmt.Sprintf("%.6f", place.Longitude))
+	q.Set("current", "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m")
+	q.Set("daily", "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum")
+	q.Set("forecast_days", fmt.Sprintf("%d", days))
+	q.Set("timezone", place.Timezone)
+	q.Set("wind_speed_unit", "mph")
+	q.Set("precipitation_unit", "inch")
+	if tempUnit == "fahrenheit" {
+		q.Set("temperature_unit", "fahrenheit")
+	}
+	u.RawQuery = q.Encode()
+
+	var forecast weatherForecast
+	if err := t.getJSON(ctx, u.String(), &forecast); err != nil {
+		return weatherForecast{}, err
 	}
 	return forecast, nil
 }
@@ -186,7 +215,7 @@ func (t *WeatherTool) getJSON(ctx context.Context, requestURL string, out any) e
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Accept", "application/geo+json")
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "weazlchat (https://github.com/bprendie/weazlchat)")
 
 	resp, err := t.client.Do(req)
@@ -205,40 +234,94 @@ func (t *WeatherTool) getJSON(ctx context.Context, requestURL string, out any) e
 	return json.Unmarshal(body, out)
 }
 
-func formatNWSForecast(label string, point nwsPoint, forecast nwsForecast, periods int) string {
-	location := label
-	near := point.Properties.RelativeLoc.Properties
-	if near.City != "" && near.State != "" {
-		location = fmt.Sprintf("%s near %s, %s", label, near.City, near.State)
+func formatWeather(place weatherPlace, forecast weatherForecast, tempUnit string) string {
+	unit := forecast.CurrentUnits.Temperature2m
+	if unit == "" {
+		if tempUnit == "fahrenheit" {
+			unit = "°F"
+		} else {
+			unit = "°C"
+		}
+	}
+
+	location := place.Name
+	if place.Admin1 != "" {
+		location += ", " + place.Admin1
+	}
+	if place.Country != "" {
+		location += ", " + place.Country
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "NWS forecast for %s\n", location)
-	if point.Properties.GridID != "" {
-		fmt.Fprintf(&b, "Grid: %s %d,%d\n", point.Properties.GridID, point.Properties.GridX, point.Properties.GridY)
-	}
-	if forecast.Properties.GeneratedAt != "" {
-		fmt.Fprintf(&b, "Generated: %s\n", forecast.Properties.GeneratedAt)
+	fmt.Fprintf(&b, "Weather for %s\n", location)
+	fmt.Fprintf(&b, "Current: %.0f%s, feels like %.0f%s, %s\n",
+		forecast.Current.Temperature2m,
+		unit,
+		forecast.Current.ApparentTemperature,
+		unit,
+		weatherCodeText(forecast.Current.WeatherCode),
+	)
+	fmt.Fprintf(&b, "Humidity: %d%%\n", forecast.Current.RelativeHumidity2m)
+	fmt.Fprintf(&b, "Wind: %.0f %s from %d°\n", forecast.Current.WindSpeed10m, forecast.CurrentUnits.WindSpeed10m, forecast.Current.WindDirection10m)
+	fmt.Fprintf(&b, "Precipitation: %.2f %s\n", forecast.Current.Precipitation, forecast.CurrentUnits.Precipitation)
+	if forecast.Current.Time != "" {
+		fmt.Fprintf(&b, "Observed: %s\n", forecast.Current.Time)
 	}
 
-	maxPeriods := periods
-	if maxPeriods > len(forecast.Properties.Periods) {
-		maxPeriods = len(forecast.Properties.Periods)
-	}
-	for i := 0; i < maxPeriods; i++ {
-		period := forecast.Properties.Periods[i]
-		fmt.Fprintf(&b, "\n%s: %d°%s, %s, wind %s %s\n",
-			period.Name,
-			period.Temperature,
-			period.TemperatureUnit,
-			period.ShortForecast,
-			period.WindSpeed,
-			period.WindDirection,
-		)
-		if period.DetailedForecast != "" {
-			b.WriteString(period.DetailedForecast)
-			b.WriteByte('\n')
+	if len(forecast.Daily.Time) > 0 {
+		b.WriteString("\nForecast:\n")
+		for i, day := range forecast.Daily.Time {
+			if i >= len(forecast.Daily.TemperatureMax) || i >= len(forecast.Daily.TemperatureMin) || i >= len(forecast.Daily.WeatherCode) {
+				break
+			}
+			precip := 0.0
+			if i < len(forecast.Daily.PrecipitationSum) {
+				precip = forecast.Daily.PrecipitationSum[i]
+			}
+			fmt.Fprintf(&b, "%s: %.0f%s/%.0f%s, %s, precip %.2f %s\n",
+				day,
+				forecast.Daily.TemperatureMax[i],
+				unit,
+				forecast.Daily.TemperatureMin[i],
+				unit,
+				weatherCodeText(forecast.Daily.WeatherCode[i]),
+				precip,
+				forecast.DailyUnits.PrecipitationSum,
+			)
 		}
 	}
 	return strings.TrimSpace(b.String())
+}
+
+func weatherCodeText(code int) string {
+	switch code {
+	case 0:
+		return "clear sky"
+	case 1, 2, 3:
+		return "partly cloudy"
+	case 45, 48:
+		return "fog"
+	case 51, 53, 55:
+		return "drizzle"
+	case 56, 57:
+		return "freezing drizzle"
+	case 61, 63, 65:
+		return "rain"
+	case 66, 67:
+		return "freezing rain"
+	case 71, 73, 75:
+		return "snow"
+	case 77:
+		return "snow grains"
+	case 80, 81, 82:
+		return "rain showers"
+	case 85, 86:
+		return "snow showers"
+	case 95:
+		return "thunderstorm"
+	case 96, 99:
+		return "thunderstorm with hail"
+	default:
+		return fmt.Sprintf("weather code %d", code)
+	}
 }
