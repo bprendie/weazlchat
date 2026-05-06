@@ -13,7 +13,6 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
 
 	"github.com/bprendie/weazlchat/internal/config"
@@ -991,22 +990,6 @@ func transcriptForSummary(messages []storage.Message) string {
 	return b.String()
 }
 
-func (m model) inputView() string {
-	if m.pasteText == "" {
-		return m.input.View()
-	}
-	prefix := strings.TrimSpace(m.input.Value())
-	badge := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#0D0D12")).
-		Background(lipgloss.Color("#F3E600")).
-		Bold(true).
-		Padding(0, 1).
-		Render(fmt.Sprintf("[PASTED %d lines]", m.pasteLines))
-	if prefix == "" {
-		return badge
-	}
-	return m.input.View() + " " + badge
-}
 
 func (m model) startStream(ch chan<- streamEvent, prompt string, history []storage.Message) tea.Cmd {
 	return func() tea.Msg {
@@ -1047,135 +1030,6 @@ func waitStream(ch <-chan streamEvent) tea.Cmd {
 	}
 }
 
-func (m *model) resize() {
-	w := max(20, m.width-6)
-	h := max(5, m.height-16)
-	m.viewport.Width = w
-	m.viewport.Height = h
-	m.sessions.SetSize(w, h+4)
-	m.workspaces.SetSize(w, h+4)
-	m.contextBar.Width = min(28, max(10, w/4))
-}
-
-func (m *model) renderMessages() {
-	var b strings.Builder
-	if len(m.messages) == 0 {
-		b.WriteString(m.styles.system.Render("W34Zl Ch4T is ready. Local providers only."))
-		if m.cfg.Tools.Enabled {
-			b.WriteString("\n")
-			b.WriteString(m.styles.system.Render("Tools enabled: " + strings.Join(m.getToolNames(), ", ")))
-		}
-	} else {
-		for _, msg := range m.messages {
-			if msg.Role == "tool" {
-				continue
-			}
-
-			label := m.styles.user.Render("you")
-			if msg.Role == "assistant" {
-				label = m.styles.assistant.Render("ai")
-			}
-			b.WriteString(label)
-			b.WriteString("\n")
-
-			if msg.Content != "" {
-				b.WriteString(wrapText(msg.Content, m.viewport.Width))
-			}
-			b.WriteString("\n\n")
-		}
-	}
-	if m.thinking {
-		b.WriteString(m.styles.assistant.Render("ai"))
-		b.WriteString("\n")
-		if len(m.pendingTools) > 0 {
-			b.WriteString(m.styles.system.Render("🔧 using tools"))
-			b.WriteString("\n")
-		}
-		if m.streamText == "" {
-			b.WriteString(m.thinkingView())
-		} else {
-			b.WriteString(wrapText(m.streamText, m.viewport.Width))
-		}
-		b.WriteString("\n\n")
-	}
-	m.viewport.SetContent(b.String())
-	m.viewport.GotoBottom()
-}
-
-func (m model) getToolNames() []string {
-	if m.toolRegistry == nil {
-		return nil
-	}
-	tools := m.toolRegistry.List()
-	names := make([]string, len(tools))
-	for i, tool := range tools {
-		names[i] = tool.Name()
-	}
-	return names
-}
-
-func (m model) thinkingView() string {
-	if m.trimming {
-		return fmt.Sprintf("%s compacting_context_checkpoint", m.working.View())
-	}
-	return fmt.Sprintf("%s %s", m.working.View(), m.thinkingPhrase())
-}
-
-func (m model) thinkingPhrase() string {
-	if len(modelThinkingPhrases) == 0 || m.streamAt.IsZero() {
-		return "model_is_thinking"
-	}
-	phase := min(2, int(time.Since(m.streamAt)/(20*time.Second)))
-	start := int((m.streamAt.UnixNano() / int64(time.Millisecond)) % int64(len(modelThinkingPhrases)))
-	idx := (start + phase) % len(modelThinkingPhrases)
-	return modelThinkingPhrases[idx]
-}
-
-func (m model) metricsView() string {
-	totalIn := m.session.InputTokens + m.reqIn
-	totalOut := m.session.OutputTokens + m.reqOut
-	tps := 0.0
-	if m.thinking && !m.streamAt.IsZero() {
-		elapsed := time.Since(m.streamAt).Seconds()
-		if elapsed > 0 {
-			tps = float64(m.reqOut) / elapsed
-		}
-	}
-	budget := m.contextBudget()
-	contextTokens := m.contextTokenEstimate()
-	pct := min(1.0, float64(contextTokens)/float64(budget))
-	text := fmt.Sprintf("ctx %s %d/%d  in %d  out %d  %.1f t/s", m.contextBar.ViewAs(pct), contextTokens, budget, totalIn, totalOut, tps)
-	width := max(20, m.width-6)
-	if len(text) < width {
-		text = strings.Repeat(" ", width-len(text)) + text
-	}
-	return m.styles.help.Render(text)
-}
-
-func (m model) helpText() string {
-	if m.mode == modeSessions {
-		return "enter resume | ctrl+d delete session | esc back | ctrl+c quit"
-	}
-	return "enter send/select | up/down history | pgup/pgdn scroll | ctrl+t trim | ctrl+r sessions | ctrl+s save | ctrl+c quit"
-}
-
-func ansiHeader() string {
-	return ` __      __          _______________.__  _________ .__        ________________
-/  \    /  \ ____   /  |  \____    /|  | \_   ___ \|  |__    /  |  \__    ___/
-\   \/\/   // __ \ /   |  |_/     / |  | /    \  \/|  |  \  /   |  |_|    |   
- \        /\  ___//    ^   /     /_ |  |_\     \___|   Y  \/    ^   /|    |   
-  \__/\  /  \___  >____   /_______ \|____/\______  /___|  /\____   | |____|   
-       \/       \/     |__|       \/             \/     \/      |__|`
-}
-
-func trimTitle(s string) string {
-	s = strings.Join(strings.Fields(s), " ")
-	if len(s) <= 48 {
-		return s
-	}
-	return s[:45] + "..."
-}
-
 func max(a, b int) int {
 	if a > b {
 		return a
@@ -1183,96 +1037,9 @@ func max(a, b int) int {
 	return b
 }
 
-func estimateMessages(messages []storage.Message) int {
-	total := 0
-	for _, msg := range messages {
-		total += estimateTokens(msg.Content)
-	}
-	return total
-}
-
-func estimateTokens(s string) int {
-	words := len(strings.Fields(s))
-	if words == 0 {
-		return 0
-	}
-	return max(1, int(float64(words)*1.33))
-}
-
-func wrapText(s string, width int) string {
-	width = max(10, width)
-	var out strings.Builder
-	paragraphs := strings.Split(s, "\n")
-	for i, paragraph := range paragraphs {
-		if paragraph == "" {
-			if i < len(paragraphs)-1 {
-				out.WriteByte('\n')
-			}
-			continue
-		}
-		out.WriteString(wrapLine(paragraph, width))
-		if i < len(paragraphs)-1 {
-			out.WriteByte('\n')
-		}
-	}
-	return out.String()
-}
-
-func countLines(s string) int {
-	if s == "" {
-		return 0
-	}
-	return strings.Count(s, "\n") + 1
-}
-
-func limitToolOutput(s string, maxChars int) string {
-	if maxChars <= 0 {
-		maxChars = 12000
-	}
-	if len(s) <= maxChars {
-		return s
-	}
-	return s[:maxChars] + fmt.Sprintf("\n\n[truncated: %d chars omitted]", len(s)-maxChars)
-}
-
 func looksLikePaste(msg tea.KeyMsg) bool {
 	if msg.Type != tea.KeyRunes {
 		return false
 	}
 	return len(msg.Runes) > 16 || strings.ContainsRune(string(msg.Runes), '\n')
-}
-
-func wrapLine(s string, width int) string {
-	words := strings.Fields(s)
-	if len(words) == 0 {
-		return ""
-	}
-	var out strings.Builder
-	lineWidth := 0
-	for _, word := range words {
-		wordWidth := lipgloss.Width(word)
-		if lineWidth > 0 && lineWidth+1+wordWidth > width {
-			out.WriteByte('\n')
-			lineWidth = 0
-		}
-		if lineWidth > 0 {
-			out.WriteByte(' ')
-			lineWidth++
-		}
-		if wordWidth <= width {
-			out.WriteString(word)
-			lineWidth += wordWidth
-			continue
-		}
-		for _, r := range word {
-			rw := lipgloss.Width(string(r))
-			if lineWidth > 0 && lineWidth+rw > width {
-				out.WriteByte('\n')
-				lineWidth = 0
-			}
-			out.WriteRune(r)
-			lineWidth += rw
-		}
-	}
-	return out.String()
 }
