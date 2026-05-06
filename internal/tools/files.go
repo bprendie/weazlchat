@@ -12,17 +12,21 @@ import (
 type ListFilesTool struct{ limits Limits }
 type ReadFileTool struct{ limits Limits }
 type SearchFilesTool struct{ limits Limits }
+type CreateFileTool struct{ limits Limits }
 
 func NewListFilesTool(limits Limits) *ListFilesTool     { return &ListFilesTool{limits: limits} }
 func NewReadFileTool(limits Limits) *ReadFileTool       { return &ReadFileTool{limits: limits} }
 func NewSearchFilesTool(limits Limits) *SearchFilesTool { return &SearchFilesTool{limits: limits} }
+func NewCreateFileTool(limits Limits) *CreateFileTool   { return &CreateFileTool{limits: limits} }
 
 func (t *ListFilesTool) Name() string               { return "list_files" }
 func (t *ReadFileTool) Name() string                { return "read_file" }
 func (t *SearchFilesTool) Name() string             { return "search_files" }
+func (t *CreateFileTool) Name() string              { return "create_file" }
 func (t *ListFilesTool) SafetyLevel() SafetyLevel   { return SafetyLevelSafe }
 func (t *ReadFileTool) SafetyLevel() SafetyLevel    { return SafetyLevelSafe }
 func (t *SearchFilesTool) SafetyLevel() SafetyLevel { return SafetyLevelSafe }
+func (t *CreateFileTool) SafetyLevel() SafetyLevel  { return SafetyLevelSafe }
 
 func (t *ListFilesTool) Description() string {
 	return "List files under a configured workspace root"
@@ -34,6 +38,10 @@ func (t *ReadFileTool) Description() string {
 
 func (t *SearchFilesTool) Description() string {
 	return "Search text files under a configured workspace root for a literal query"
+}
+
+func (t *CreateFileTool) Description() string {
+	return "Create a new text file under a configured workspace root. Refuses to overwrite existing files"
 }
 
 func (t *ListFilesTool) Parameters() []Parameter {
@@ -57,6 +65,14 @@ func (t *SearchFilesTool) Parameters() []Parameter {
 		{Name: "query", Type: "string", Description: "Literal text to search for", Required: true},
 		{Name: "glob", Type: "string", Description: "Optional filepath glob matched against relative paths", Required: false},
 		{Name: "max_matches", Type: "number", Description: "Maximum matching lines to return, defaults to 100", Required: false},
+	}
+}
+
+func (t *CreateFileTool) Parameters() []Parameter {
+	return []Parameter{
+		{Name: "path", Type: "string", Description: "New file path under a configured workspace root", Required: true},
+		{Name: "content", Type: "string", Description: "Text content to write", Required: true},
+		{Name: "create_parent_dirs", Type: "boolean", Description: "Create missing parent directories. Defaults to false", Required: false},
 	}
 }
 
@@ -206,6 +222,46 @@ func (t *SearchFilesTool) Execute(ctx context.Context, params map[string]any) (s
 		return "No matches found.", nil
 	}
 	return t.limits.Truncate(out.String()), nil
+}
+
+func (t *CreateFileTool) Execute(ctx context.Context, params map[string]any) (string, error) {
+	if err := t.limits.RequireRoots(); err != nil {
+		return "", err
+	}
+	pathParam, _ := params["path"].(string)
+	path, err := t.limits.ResolveCreateAllowed(pathParam)
+	if err != nil {
+		return "", err
+	}
+	content, ok := params["content"].(string)
+	if !ok {
+		return "", fmt.Errorf("content parameter is required and must be a string")
+	}
+	if int64(len(content)) > t.limits.fileLimit() {
+		return "", fmt.Errorf("content is too large: %d bytes", len(content))
+	}
+	if !looksText([]byte(content)) {
+		return "", fmt.Errorf("content does not look like text")
+	}
+	createParentDirs, _ := params["create_parent_dirs"].(bool)
+	parent := filepath.Dir(path)
+	if createParentDirs {
+		if err := os.MkdirAll(parent, 0o755); err != nil {
+			return "", err
+		}
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		if os.IsExist(err) {
+			return "", fmt.Errorf("%s already exists; create_file refuses to overwrite", pathParam)
+		}
+		return "", err
+	}
+	defer f.Close()
+	if _, err := f.WriteString(content); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Created %s (%d bytes)", path, len(content)), nil
 }
 
 func intParam(params map[string]any, key string, def, min, max int) int {

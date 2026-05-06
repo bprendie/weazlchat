@@ -143,12 +143,15 @@ Fetches an HTTP or HTTPS URL and returns readable text. Private and local networ
 #### Local Files
 Read-only file tools work only under configured `workspace_roots`.
 
-**Tools:** `list_files`, `search_files`, `read_file`
+**Tools:** `list_files`, `search_files`, `read_file`, `create_file`
 
 **Example prompts:**
 - "Search my notes for MCP"
 - "Read README.md in this repo"
 - "List Go files under the TUI package"
+- "Write that answer to answer.md"
+
+`create_file` only creates new text files under `workspace_roots`; it refuses to overwrite existing files.
 
 #### Read-Only Command
 Runs allowlisted read-only commands under configured `workspace_roots`. Commands are passed as command plus args, not shell strings.
@@ -183,8 +186,9 @@ Stores explicit encrypted local memories in WeazlChat's database.
 
 ### Security
 
-- **Safe tools** execute automatically and are designed to be read-only or explicitly local memory operations
+- **Safe tools** execute automatically and are designed to be read-only, create-only text file writes, or explicitly local memory operations
 - File, shell, and SQLite tools are confined to configured `workspace_roots`
+- `create_file` refuses overwrites
 - Shell commands are allowlisted and do not execute through a shell
 - URL fetch rejects private and local network addresses
 - Tool output is truncated before it is sent back to the model

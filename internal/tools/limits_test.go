@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,6 +29,19 @@ func TestLimitsRejectsOutsideRoot(t *testing.T) {
 	_, err := limits.ResolveAllowed("/tmp/not-inside-root")
 	if err == nil {
 		t.Fatal("ResolveAllowed returned nil error for outside path")
+	}
+}
+
+func TestLimitsResolveCreateAllowedForNewFile(t *testing.T) {
+	root := t.TempDir()
+	limits := Limits{WorkspaceRoots: []string{root}}
+	path := filepath.Join(root, "new.md")
+	got, err := limits.ResolveCreateAllowed(path)
+	if err != nil {
+		t.Fatalf("ResolveCreateAllowed returned error: %v", err)
+	}
+	if got != path {
+		t.Fatalf("ResolveCreateAllowed = %q, want %q", got, path)
 	}
 }
 
@@ -64,5 +78,44 @@ func TestReadableTextExtractsHTML(t *testing.T) {
 	got := readableText(html, "text/html")
 	if !strings.Contains(got, "Title: Hello") || !strings.Contains(got, "One & two") || strings.Contains(got, "x()") {
 		t.Fatalf("readableText = %q", got)
+	}
+}
+
+func TestCreateFileToolCreatesNewFile(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "answer.md")
+	tool := NewCreateFileTool(Limits{WorkspaceRoots: []string{root}, MaxFileBytes: 1024})
+	result, err := tool.Execute(context.Background(), map[string]any{
+		"path":    path,
+		"content": "# Answer\n",
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if !strings.Contains(result, "Created") {
+		t.Fatalf("result = %q, want Created", result)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(data) != "# Answer\n" {
+		t.Fatalf("file content = %q", string(data))
+	}
+}
+
+func TestCreateFileToolRefusesOverwrite(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "answer.md")
+	if err := os.WriteFile(path, []byte("old"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	tool := NewCreateFileTool(Limits{WorkspaceRoots: []string{root}, MaxFileBytes: 1024})
+	_, err := tool.Execute(context.Background(), map[string]any{
+		"path":    path,
+		"content": "new",
+	})
+	if err == nil {
+		t.Fatal("Execute returned nil error for existing file")
 	}
 }

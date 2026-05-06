@@ -44,6 +44,7 @@ func main() {
 	toolRegistry.Register(tools.NewListFilesTool(toolLimits))
 	toolRegistry.Register(tools.NewReadFileTool(toolLimits))
 	toolRegistry.Register(tools.NewSearchFilesTool(toolLimits))
+	toolRegistry.Register(tools.NewCreateFileTool(toolLimits))
 	toolRegistry.Register(tools.NewRunCommandTool(toolLimits))
 	toolRegistry.Register(tools.NewSQLiteQueryTool(toolLimits))
 	toolRegistry.Register(tools.NewRememberTool(store, toolLimits))

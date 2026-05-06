@@ -80,6 +80,28 @@ func (l Limits) ResolveAllowed(path string) (string, error) {
 	return "", fmt.Errorf("%s is outside configured workspace roots", path)
 }
 
+func (l Limits) ResolveCreateAllowed(path string) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", fmt.Errorf("path is required")
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	parent := filepath.Dir(abs)
+	if real, err := filepath.EvalSymlinks(parent); err == nil {
+		abs = filepath.Join(real, filepath.Base(abs))
+	}
+
+	for _, root := range l.CleanRoots() {
+		rel, err := filepath.Rel(root, abs)
+		if err == nil && rel != "." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) && rel != ".." {
+			return abs, nil
+		}
+	}
+	return "", fmt.Errorf("%s is outside configured workspace roots", path)
+}
+
 func (l Limits) RequireRoots() error {
 	if len(l.CleanRoots()) == 0 {
 		return fmt.Errorf("no workspace_roots configured")
