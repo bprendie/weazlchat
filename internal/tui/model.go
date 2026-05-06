@@ -1125,7 +1125,9 @@ func (m model) thinkingPhrase() string {
 	if len(modelThinkingPhrases) == 0 || m.streamAt.IsZero() {
 		return "model_is_thinking"
 	}
-	idx := int(time.Since(m.streamAt)/(900*time.Millisecond)) % len(modelThinkingPhrases)
+	phase := min(2, int(time.Since(m.streamAt)/(20*time.Second)))
+	start := int((m.streamAt.UnixNano() / int64(time.Millisecond)) % int64(len(modelThinkingPhrases)))
+	idx := (start + phase) % len(modelThinkingPhrases)
 	return modelThinkingPhrases[idx]
 }
 
