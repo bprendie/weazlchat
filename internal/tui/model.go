@@ -77,6 +77,43 @@ type streamEvent struct {
 	done      bool
 }
 
+var contextTrimSpinner = spinner.Spinner{
+	Frames: []string{
+		"▰▱▱▱",
+		"▰▰▱▱",
+		"▰▰▰▱",
+		"▰▰▰▰",
+		"▱▰▰▰",
+		"▱▱▰▰",
+		"▱▱▱▰",
+		"▱▱▱▱",
+	},
+	FPS: time.Second / 12,
+}
+
+var modelThinkingPhrases = []string{
+	"hacking_the_gibson",
+	"jacking_into_the_matrix",
+	"breaching_corporate_ice",
+	"overclocking_neural_link",
+	"tracing_the_uplink",
+	"decrypting_sector_7",
+	"sniffing_data_packets",
+	"bypassing_firewall_01",
+	"rerouting_the_mainframe",
+	"uploading_virus_payload",
+	"accessing_black_ice",
+	"mapping_the_grid",
+	"ghosting_the_network",
+	"prying_open_the_vault",
+	"optimizing_cyberdeck",
+	"draining_the_data_well",
+	"spoofing_host_protocol",
+	"syncing_with_the_construct",
+	"scrambling_bio_signals",
+	"system_reboot_imminent",
+}
+
 type contextTrimMsg struct {
 	auto            bool
 	prompt          string
@@ -118,7 +155,7 @@ func New(cfg config.Config, cfgPath string, store *storage.Store, toolRegistry *
 
 	s := newStyles()
 	working := spinner.New(
-		spinner.WithSpinner(spinner.MiniDot),
+		spinner.WithSpinner(spinner.Jump),
 		spinner.WithStyle(s.assistant),
 	)
 	contextBar := progress.New(progress.WithDefaultGradient(), progress.WithoutPercentage())
@@ -303,6 +340,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.auto {
 			m.status = "streaming"
 			m.thinking = true
+			m.working.Spinner = spinner.Jump
 			m.streamText = ""
 			m.streamAt = time.Now()
 			m.reqIn = m.contextTokenEstimate()
@@ -460,6 +498,7 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.thinking = true
+		m.working.Spinner = spinner.Jump
 		m.streamText = ""
 		m.streamAt = time.Now()
 		m.reqIn = estimateMessages(contextHistory) + estimateTokens(prompt)
@@ -699,6 +738,7 @@ func (m model) executeTools(inputTokens, outputTokens int) (tea.Model, tea.Cmd) 
 
 	// Start new stream with tool results
 	m.thinking = true
+	m.working.Spinner = spinner.Points
 	m.streamAt = time.Now()
 	m.status = "processing tool results"
 	ch := make(chan streamEvent, 64)
@@ -807,6 +847,7 @@ func (m model) trimContext(auto bool, prompt string, currentPromptID, throughID 
 	}
 	m.thinking = true
 	m.trimming = true
+	m.working.Spinner = contextTrimSpinner
 	m.streamText = ""
 	m.streamAt = time.Now()
 	m.reqIn = estimateMessages(toSummarize)
@@ -1075,9 +1116,17 @@ func (m model) getToolNames() []string {
 
 func (m model) thinkingView() string {
 	if m.trimming {
-		return fmt.Sprintf("%s trimming context", m.working.View())
+		return fmt.Sprintf("%s compacting_context_checkpoint", m.working.View())
 	}
-	return fmt.Sprintf("%s model is thinking", m.working.View())
+	return fmt.Sprintf("%s %s", m.working.View(), m.thinkingPhrase())
+}
+
+func (m model) thinkingPhrase() string {
+	if len(modelThinkingPhrases) == 0 || m.streamAt.IsZero() {
+		return "model_is_thinking"
+	}
+	idx := int(time.Since(m.streamAt)/(900*time.Millisecond)) % len(modelThinkingPhrases)
+	return modelThinkingPhrases[idx]
 }
 
 func (m model) metricsView() string {
