@@ -103,6 +103,14 @@ Returns the current date and time for the local machine or a requested IANA time
 - "What is the current date in UTC?"
 - "What time is it in America/New_York?"
 
+#### Weather
+Fetches US National Weather Service forecasts from `api.weather.gov`. Always available when tools are enabled and does not require an API key. The NWS API requires latitude and longitude coordinates; it does not geocode city names.
+
+**Example prompts:**
+- "Get the weather for latitude 40.7128, longitude -74.0060"
+- "What's the NWS forecast for 39.9526, -75.1652?"
+- "Use the weather tool for my coordinates: 34.0522, -118.2437"
+
 #### Stock Price
 Fetches current stock prices and market data. Requires Alpha Vantage API key.
 
@@ -137,7 +145,7 @@ Searches the web with Brave Search and returns top result titles, URLs, snippets
 
 ### Security
 
-- **Safe tools** (calculator, current time, stock prices, web search) execute automatically as they only read data
+- **Safe tools** (calculator, current time, weather, stock prices, web search) execute automatically as they only read data
 - Tool execution happens locally in the WeazlChat process
 - API keys are stored in your local config file (not shared)
 - All tool interactions are encrypted in your local database

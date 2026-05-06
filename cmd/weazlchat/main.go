@@ -34,6 +34,7 @@ func main() {
 	toolRegistry := tools.NewRegistry()
 	toolRegistry.Register(tools.NewCalculatorTool())
 	toolRegistry.Register(tools.NewDateTimeTool())
+	toolRegistry.Register(tools.NewWeatherTool())
 	if cfg.Tools.AlphaVantageKey != "" {
 		toolRegistry.Register(tools.NewStockPriceTool(cfg.Tools.AlphaVantageKey))
 	}
