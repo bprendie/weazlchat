@@ -67,3 +67,19 @@ func TestDateTimeToolInvalidTimezone(t *testing.T) {
 		t.Fatal("Execute returned nil error for invalid timezone")
 	}
 }
+
+func TestWebSearchToolRequiresQuery(t *testing.T) {
+	_, err := NewWebSearchTool("key").Execute(context.Background(), map[string]any{})
+	if err == nil {
+		t.Fatal("Execute returned nil error without query")
+	}
+}
+
+func TestWebSearchToolRequiresAPIKey(t *testing.T) {
+	_, err := NewWebSearchTool("").Execute(context.Background(), map[string]any{
+		"query": "weazlchat",
+	})
+	if err == nil {
+		t.Fatal("Execute returned nil error without API key")
+	}
+}

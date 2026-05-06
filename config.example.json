@@ -21,6 +21,7 @@
   "tools": {
     "enabled": true,
     "auto_execute_safe": true,
-    "alpha_vantage_api_key": "YOUR_API_KEY_HERE"
+    "alpha_vantage_api_key": "YOUR_ALPHA_VANTAGE_API_KEY_HERE",
+    "brave_api_key": "YOUR_BRAVE_API_KEY_HERE"
   }
 }

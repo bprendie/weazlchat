@@ -37,6 +37,9 @@ func main() {
 	if cfg.Tools.AlphaVantageKey != "" {
 		toolRegistry.Register(tools.NewStockPriceTool(cfg.Tools.AlphaVantageKey))
 	}
+	if cfg.Tools.BraveAPIKey != "" {
+		toolRegistry.Register(tools.NewWebSearchTool(cfg.Tools.BraveAPIKey))
+	}
 
 	p := tea.NewProgram(tui.New(cfg, cfgPath, store, toolRegistry), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

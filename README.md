@@ -69,7 +69,8 @@ Edit `~/.config/weazlchat/config.json` and add the `tools` section:
   "tools": {
     "enabled": true,
     "auto_execute_safe": true,
-    "alpha_vantage_api_key": "YOUR_API_KEY_HERE"
+    "alpha_vantage_api_key": "YOUR_ALPHA_VANTAGE_API_KEY_HERE",
+    "brave_api_key": "YOUR_BRAVE_API_KEY_HERE"
   }
 }
 ```
@@ -79,6 +80,7 @@ Edit `~/.config/weazlchat/config.json` and add the `tools` section:
 - `enabled`: Set to `true` to enable tool support (default: `false`)
 - `auto_execute_safe`: Automatically execute safe (read-only) tools without confirmation (default: `true`)
 - `alpha_vantage_api_key`: API key for stock price lookups (optional, get free key at https://www.alphavantage.co/support/#api-key)
+- `brave_api_key`: API key for Brave web search lookups (optional)
 
 ### Available Tools
 
@@ -108,6 +110,14 @@ Fetches current stock prices and market data. Requires Alpha Vantage API key.
 - "Get me the latest stock info for AAPL"
 - "How is Microsoft (MSFT) doing today?"
 
+#### Web Search
+Searches the web with Brave Search and returns top result titles, URLs, snippets, and dates when available. Requires Brave API key.
+
+**Example prompts:**
+- "Search the web for the latest Go release notes"
+- "Find current information about Bubble Tea tool calling examples"
+- "Look up recent news about local AI models"
+
 ### How It Works
 
 1. When you ask a question that requires a tool, the AI model will automatically call the appropriate tool
@@ -126,7 +136,7 @@ Fetches current stock prices and market data. Requires Alpha Vantage API key.
 
 ### Security
 
-- **Safe tools** (calculator, current time, stock prices) execute automatically as they only read data
+- **Safe tools** (calculator, current time, stock prices, web search) execute automatically as they only read data
 - Tool execution happens locally in the WeazlChat process
 - API keys are stored in your local config file (not shared)
 - All tool interactions are encrypted in your local database

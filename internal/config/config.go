@@ -33,9 +33,10 @@ type UI struct {
 }
 
 type Tools struct {
-	Enabled        bool   `json:"enabled"`
-	AutoExecute    bool   `json:"auto_execute_safe"`
+	Enabled         bool   `json:"enabled"`
+	AutoExecute     bool   `json:"auto_execute_safe"`
 	AlphaVantageKey string `json:"alpha_vantage_api_key,omitempty"`
+	BraveAPIKey     string `json:"brave_api_key,omitempty"`
 }
 
 func Load() (Config, string, error) {
