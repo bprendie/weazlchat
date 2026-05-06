@@ -66,7 +66,7 @@ echo "If your shell cannot find it yet, restart the shell or run:"
 echo "  $path_line"
 
 echo ""
-echo "Configuring provider..."
+echo "Configuring provider and optional tools..."
 (
   cd "$REPO_ROOT"
   GOCACHE="$GO_CACHE" GOMODCACHE="$GO_MOD_CACHE" go run -buildvcs=false ./cmd/weazlchat-setup

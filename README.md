@@ -25,7 +25,7 @@ go run ./cmd/weazlchat
 ```
 
 The installer builds `weazlchat`, places it in `~/.weazlchat/bin`, and adds that directory to your shell `PATH` when it is not already present.
-It also asks for your provider type and URL, queries the provider for available models, writes `~/.config/weazlchat/config.json`, and starts the TUI.
+It also asks for your provider type and URL, queries the provider for available models, optionally asks for tool API keys, writes `~/.config/weazlchat/config.json`, and starts the TUI.
 
 Provider URLs should be base URLs:
 
@@ -33,6 +33,7 @@ Provider URLs should be base URLs:
 - Ollama: `http://host:11434`, without `/api`
 
 The installer normalizes accidental `/v1` and `/api` suffixes before querying and saving.
+Tool API keys are optional. During setup, blank keeps an existing saved key and `-` clears it.
 
 The first run asks you to create a local history password. Session history and workspace saves are stored in SQLite with a bcrypt-protected vault and AES-GCM encrypted payloads.
 
@@ -62,7 +63,7 @@ WeazlChat supports function calling (tools) that allow the AI model to interact 
 
 ### Enabling Tools
 
-Edit `~/.config/weazlchat/config.json` and add the `tools` section:
+The installer can write this section for you. To edit it manually, update `~/.config/weazlchat/config.json`:
 
 ```json
 {

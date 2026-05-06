@@ -42,16 +42,16 @@ func run() error {
 	if err != nil {
 		fmt.Printf("Could not query models: %v\n", err)
 		model := askString(reader, "Model name", defaultModel(providerType))
-		return writeConfig(cfgPath, cfg, providerType, serverURL, model)
+		return writeConfig(cfgPath, configureTools(reader, cfg), providerType, serverURL, model)
 	}
 	if len(models) == 0 {
 		fmt.Println("Provider returned no models.")
 		model := askString(reader, "Model name", defaultModel(providerType))
-		return writeConfig(cfgPath, cfg, providerType, serverURL, model)
+		return writeConfig(cfgPath, configureTools(reader, cfg), providerType, serverURL, model)
 	}
 
 	model := askModel(reader, models)
-	return writeConfig(cfgPath, cfg, providerType, serverURL, model)
+	return writeConfig(cfgPath, configureTools(reader, cfg), providerType, serverURL, model)
 }
 
 func fetchModels(providerType, serverURL string) ([]string, error) {
@@ -138,7 +138,25 @@ func writeConfig(cfgPath string, cfg config.Config, providerType, serverURL, mod
 	}
 	fmt.Printf("Wrote config: %s\n", cfgPath)
 	fmt.Printf("Active provider: %s (%s / %s)\n", providerID, providerType, model)
+	if cfg.Tools.Enabled {
+		fmt.Println("Tools enabled")
+	}
 	return nil
+}
+
+func configureTools(reader *bufio.Reader, cfg config.Config) config.Config {
+	fmt.Println("")
+	fmt.Println("Optional tool API keys")
+	fmt.Println("Leave a key blank to keep the current value.")
+
+	alphaKey := askSecret(reader, "Alpha Vantage API key for stock lookups", cfg.Tools.AlphaVantageKey)
+	braveKey := askSecret(reader, "Brave Search API key for web search", cfg.Tools.BraveAPIKey)
+
+	cfg.Tools.AlphaVantageKey = alphaKey
+	cfg.Tools.BraveAPIKey = braveKey
+	cfg.Tools.AutoExecute = true
+	cfg.Tools.Enabled = alphaKey != "" || braveKey != ""
+	return cfg
 }
 
 func askChoice(reader *bufio.Reader, label string, choices []string, def string) string {
@@ -194,6 +212,26 @@ func askString(reader *bufio.Reader, label, def string) string {
 	answer = strings.TrimSpace(answer)
 	if answer == "" {
 		return def
+	}
+	return answer
+}
+
+func askSecret(reader *bufio.Reader, label, current string) string {
+	if current != "" {
+		fmt.Printf("%s [saved; blank keeps, - clears]: ", label)
+	} else {
+		fmt.Printf("%s [optional]: ", label)
+	}
+	answer, err := reader.ReadString('\n')
+	if err != nil && answer == "" {
+		return current
+	}
+	answer = strings.TrimSpace(answer)
+	if answer == "" {
+		return current
+	}
+	if answer == "-" {
+		return ""
 	}
 	return answer
 }
