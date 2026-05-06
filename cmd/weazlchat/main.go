@@ -31,10 +31,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	toolLimits := tools.Limits{
+		WorkspaceRoots: cfg.Tools.WorkspaceRoots,
+		MaxOutputChars: cfg.Tools.MaxOutputChars,
+		MaxFileBytes:   cfg.Tools.MaxFileBytes,
+	}
 	toolRegistry := tools.NewRegistry()
 	toolRegistry.Register(tools.NewCalculatorTool())
 	toolRegistry.Register(tools.NewDateTimeTool())
 	toolRegistry.Register(tools.NewWeatherTool())
+	toolRegistry.Register(tools.NewFetchURLTool(toolLimits))
+	toolRegistry.Register(tools.NewListFilesTool(toolLimits))
+	toolRegistry.Register(tools.NewReadFileTool(toolLimits))
+	toolRegistry.Register(tools.NewSearchFilesTool(toolLimits))
+	toolRegistry.Register(tools.NewRunCommandTool(toolLimits))
+	toolRegistry.Register(tools.NewSQLiteQueryTool(toolLimits))
+	toolRegistry.Register(tools.NewRememberTool(store, toolLimits))
+	toolRegistry.Register(tools.NewRecallTool(store, toolLimits))
+	toolRegistry.Register(tools.NewListMemoriesTool(store, toolLimits))
+	toolRegistry.Register(tools.NewForgetTool(store))
 	if cfg.Tools.AlphaVantageKey != "" {
 		toolRegistry.Register(tools.NewStockPriceTool(cfg.Tools.AlphaVantageKey))
 	}

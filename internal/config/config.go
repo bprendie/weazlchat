@@ -33,10 +33,13 @@ type UI struct {
 }
 
 type Tools struct {
-	Enabled         bool   `json:"enabled"`
-	AutoExecute     bool   `json:"auto_execute_safe"`
-	AlphaVantageKey string `json:"alpha_vantage_api_key,omitempty"`
-	BraveAPIKey     string `json:"brave_api_key,omitempty"`
+	Enabled         bool     `json:"enabled"`
+	AutoExecute     bool     `json:"auto_execute_safe"`
+	AlphaVantageKey string   `json:"alpha_vantage_api_key,omitempty"`
+	BraveAPIKey     string   `json:"brave_api_key,omitempty"`
+	WorkspaceRoots  []string `json:"workspace_roots,omitempty"`
+	MaxOutputChars  int      `json:"max_output_chars,omitempty"`
+	MaxFileBytes    int64    `json:"max_file_bytes,omitempty"`
 }
 
 func Load() (Config, string, error) {
@@ -94,8 +97,10 @@ func Default() Config {
 		Database: Database{Path: filepath.Join(dataDir, "weazlchat.sqlite3")},
 		UI:       UI{ResumeLastSession: true},
 		Tools: Tools{
-			Enabled:     false,
-			AutoExecute: true,
+			Enabled:        false,
+			AutoExecute:    true,
+			MaxOutputChars: 12000,
+			MaxFileBytes:   1024 * 1024,
 		},
 	}
 }
@@ -121,6 +126,12 @@ func (c *Config) withDefaults() {
 	}
 	if c.Database.Path == "" {
 		c.Database.Path = def.Database.Path
+	}
+	if c.Tools.MaxOutputChars <= 0 {
+		c.Tools.MaxOutputChars = def.Tools.MaxOutputChars
+	}
+	if c.Tools.MaxFileBytes <= 0 {
+		c.Tools.MaxFileBytes = def.Tools.MaxFileBytes
 	}
 }
 

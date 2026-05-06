@@ -71,7 +71,10 @@ The installer can write this section for you. To edit it manually, update `~/.co
     "enabled": true,
     "auto_execute_safe": true,
     "alpha_vantage_api_key": "YOUR_ALPHA_VANTAGE_API_KEY_HERE",
-    "brave_api_key": "YOUR_BRAVE_API_KEY_HERE"
+    "brave_api_key": "YOUR_BRAVE_API_KEY_HERE",
+    "workspace_roots": ["/home/user/Code", "/home/user/Notes"],
+    "max_output_chars": 12000,
+    "max_file_bytes": 1048576
   }
 }
 ```
@@ -82,6 +85,9 @@ The installer can write this section for you. To edit it manually, update `~/.co
 - `auto_execute_safe`: Automatically execute safe (read-only) tools without confirmation (default: `true`)
 - `alpha_vantage_api_key`: API key for stock price lookups (optional, get free key at https://www.alphavantage.co/support/#api-key)
 - `brave_api_key`: API key for Brave web search lookups (optional)
+- `workspace_roots`: Directories that file, shell, and SQLite tools may read from
+- `max_output_chars`: Maximum characters returned by tools before truncation
+- `max_file_bytes`: Maximum file size for file search/read tools
 
 ### Available Tools
 
@@ -127,10 +133,42 @@ Searches the web with Brave Search and returns top result titles, URLs, snippets
 - "Find current information about Bubble Tea tool calling examples"
 - "Look up recent news about local AI models"
 
+#### Fetch URL
+Fetches an HTTP or HTTPS URL and returns readable text. Private and local network addresses are rejected.
+
+**Example prompts:**
+- "Fetch this documentation page and summarize it: https://example.com/docs"
+- "Read the first article from those search results"
+
+#### Local Files
+Read-only file tools work only under configured `workspace_roots`.
+
+**Tools:** `list_files`, `search_files`, `read_file`
+
+**Example prompts:**
+- "Search my notes for MCP"
+- "Read README.md in this repo"
+- "List Go files under the TUI package"
+
+#### Read-Only Command
+Runs allowlisted read-only commands under configured `workspace_roots`. Commands are passed as command plus args, not shell strings.
+
+**Allowlisted examples:** `pwd`, `ls`, `find`, `rg`, `cat`, `git status`, `git diff`, `git log`, `git show`, `go test`, `npm test`
+
+#### SQLite Query
+Runs read-only SQLite queries against database files under configured `workspace_roots`.
+
+**Allowed SQL:** `SELECT`, `WITH`, `EXPLAIN`, and `PRAGMA table_info`
+
+#### Local Memory
+Stores explicit encrypted local memories in WeazlChat's database.
+
+**Tools:** `remember`, `recall`, `list_memories`, `forget`
+
 ### How It Works
 
 1. When you ask a question that requires a tool, the AI model will automatically call the appropriate tool
-2. The tool execution is shown in the chat with a 🔧 icon
+2. Tool payloads stay hidden from the chat transcript
 3. The tool result is fed back to the model, which then provides a natural language response
 4. All tool calls and results are encrypted and stored in your local database
 
@@ -145,10 +183,14 @@ Searches the web with Brave Search and returns top result titles, URLs, snippets
 
 ### Security
 
-- **Safe tools** (calculator, current time, weather, stock prices, web search) execute automatically as they only read data
+- **Safe tools** execute automatically and are designed to be read-only or explicitly local memory operations
+- File, shell, and SQLite tools are confined to configured `workspace_roots`
+- Shell commands are allowlisted and do not execute through a shell
+- URL fetch rejects private and local network addresses
+- Tool output is truncated before it is sent back to the model
 - Tool execution happens locally in the WeazlChat process
 - API keys are stored in your local config file (not shared)
-- All tool interactions are encrypted in your local database
+- Chat history, tool interactions, and memories are encrypted in your local database
 
 ### Example Config
 

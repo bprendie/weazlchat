@@ -605,6 +605,7 @@ func (m model) executeTools(inputTokens, outputTokens int) (tea.Model, tea.Cmd) 
 		if err != nil {
 			result = fmt.Sprintf("Tool error: %v", err)
 		}
+		result = limitToolOutput(result, m.cfg.Tools.MaxOutputChars)
 
 		m.toolResults = append(m.toolResults, result)
 		if err := m.store.AddMessageWithTools(m.session.ID, "tool", result, "", call.ID); err != nil {
@@ -913,6 +914,16 @@ func countLines(s string) int {
 		return 0
 	}
 	return strings.Count(s, "\n") + 1
+}
+
+func limitToolOutput(s string, maxChars int) string {
+	if maxChars <= 0 {
+		maxChars = 12000
+	}
+	if len(s) <= maxChars {
+		return s
+	}
+	return s[:maxChars] + fmt.Sprintf("\n\n[truncated: %d chars omitted]", len(s)-maxChars)
 }
 
 func looksLikePaste(msg tea.KeyMsg) bool {

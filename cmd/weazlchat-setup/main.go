@@ -151,11 +151,14 @@ func configureTools(reader *bufio.Reader, cfg config.Config) config.Config {
 
 	alphaKey := askSecret(reader, "Alpha Vantage API key for stock lookups", cfg.Tools.AlphaVantageKey)
 	braveKey := askSecret(reader, "Brave Search API key for web search", cfg.Tools.BraveAPIKey)
+	workspaceRoots := askRoots(reader, cfg.Tools.WorkspaceRoots)
+	enableTools := askChoice(reader, "Enable tools", []string{"yes", "no"}, "yes") == "yes"
 
 	cfg.Tools.AlphaVantageKey = alphaKey
 	cfg.Tools.BraveAPIKey = braveKey
+	cfg.Tools.WorkspaceRoots = workspaceRoots
 	cfg.Tools.AutoExecute = true
-	cfg.Tools.Enabled = alphaKey != "" || braveKey != ""
+	cfg.Tools.Enabled = enableTools
 	return cfg
 }
 
@@ -234,6 +237,34 @@ func askSecret(reader *bufio.Reader, label, current string) string {
 		return ""
 	}
 	return answer
+}
+
+func askRoots(reader *bufio.Reader, current []string) []string {
+	if len(current) > 0 {
+		fmt.Printf("Workspace roots [saved: %s; blank keeps, - clears]: ", strings.Join(current, ", "))
+	} else {
+		fmt.Print("Workspace roots for file/shell/sql tools [optional, comma-separated]: ")
+	}
+	answer, err := reader.ReadString('\n')
+	if err != nil && answer == "" {
+		return current
+	}
+	answer = strings.TrimSpace(answer)
+	if answer == "" {
+		return current
+	}
+	if answer == "-" {
+		return nil
+	}
+	parts := strings.Split(answer, ",")
+	roots := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			roots = append(roots, part)
+		}
+	}
+	return roots
 }
 
 func urlHelp(providerType string) string {

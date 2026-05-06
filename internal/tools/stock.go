@@ -99,8 +99,8 @@ func (t *StockPriceTool) Execute(ctx context.Context, params map[string]any) (st
 			Change           string `json:"09. change"`
 			ChangePercent    string `json:"10. change percent"`
 		} `json:"Global Quote"`
-		Note    string `json:"Note"`
-		Error   string `json:"Error Message"`
+		Note  string `json:"Note"`
+		Error string `json:"Error Message"`
 	}
 
 	if err := json.Unmarshal(body, &result); err != nil {
