@@ -109,7 +109,6 @@ Run setup first if you want the guided config flow:
 - `ctrl+m`: toggle between copy mode and mouse scroll mode
 - `ctrl+n`: start a new session
 - `ctrl+r`: open workspace saves
-- `ctrl+d`: delete selected session from history
 - `ctrl+e`: rename the active or selected workspace save; from chat, this creates the save first if needed
 - `ctrl+s`: save current workspace view
 - `ctrl+w`: open workspace saves
@@ -134,6 +133,8 @@ While you wait for inference, WeazlChat uses Bubble spinner animations with rota
 Tool calls stay neatly tucked away in the transcript as `🔧 using tools`. When WeazlChat is summarizing older history into a checkpoint, it uses a distinct compaction animation so you know it is trimming context rather than hanging on a standard response.
 
 Assistant responses are rendered with Glamour-powered Markdown once they land in the transcript, including when you resume a session or replay a saved workspace. Streaming text stays simple while it is still arriving, then gets cleaned up after the response is saved.
+
+Workspace saves are meant to feel like quick snapshots, not a filing chore. Press `ctrl+s` to save or update the current workspace view, then use `ctrl+r` or `ctrl+w` to open the picker. In the picker, saves are ordered by creation time but displayed as `workspace name: timestamp` so the useful part is first. Press `ctrl+e` from chat to create/rename the active workspace, or press `ctrl+e` in the picker to rename the selected save.
 
 You can tune or disable Markdown rendering in `~/.config/weazlchat/config.json`:
 
