@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -97,6 +98,8 @@ func (m model) newSession() (tea.Model, tea.Cmd) {
 	m.messages = nil
 	m.checkpoint = storage.ContextCheckpoint{}
 	m.hasCheckpoint = false
+	m.activeWorkspaceID = 0
+	m.activeWorkspaceName = ""
 	m.historyIdx = 0
 	m.historyDraft = ""
 	m.mode = modeChat
@@ -116,6 +119,8 @@ func (m model) loadSession(sess storage.Session) (tea.Model, tea.Cmd) {
 	m.refreshCheckpoint()
 	m.historyIdx = 0
 	m.historyDraft = ""
+	m.activeWorkspaceID = 0
+	m.activeWorkspaceName = ""
 	m.mode = modeChat
 	m.status = "resumed " + sess.Title
 	m.input.Focus()
@@ -188,6 +193,8 @@ func (m model) loadWorkspace(save storage.WorkspaceSave) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.session = sess
+	m.activeWorkspaceID = save.ID
+	m.activeWorkspaceName = save.Name
 	if save.ThroughMessageID > 0 {
 		m.messages, err = m.store.MessagesThrough(save.SessionID, save.ThroughMessageID)
 	} else {
@@ -213,10 +220,93 @@ func (m *model) saveWorkspace() {
 	if len(m.messages) > 0 {
 		throughID = m.messages[len(m.messages)-1].ID
 	}
-	if err := m.store.SaveWorkspace(name, m.session.ID, m.viewport.View(), throughID); err != nil {
+	id, err := m.store.SaveWorkspace(name, m.session.ID, m.viewport.View(), throughID)
+	if err != nil {
 		m.err = err.Error()
 		return
 	}
-	m.status = "workspace saved"
+	m.activeWorkspaceID = id
+	m.activeWorkspaceName = name
+	m.status = "workspace saved: " + name
 	m.err = ""
+}
+
+func (m model) startRenameWorkspace() (tea.Model, tea.Cmd) {
+	var id int64
+	name := ""
+	returnMode := m.mode
+	switch m.mode {
+	case modeChat:
+		id = m.activeWorkspaceID
+		name = m.activeWorkspaceName
+	case modeWorkspace:
+		item, ok := m.workspaces.SelectedItem().(workspaceItem)
+		if !ok {
+			return m, nil
+		}
+		save := storage.WorkspaceSave(item)
+		id = save.ID
+		name = save.Name
+	}
+	if id == 0 {
+		m.status = "no active workspace save to rename"
+		return m, nil
+	}
+	m.renameWorkspaceID = id
+	m.renameReturnMode = returnMode
+	m.renameDraft = m.input.Value()
+	m.input.SetValue(name)
+	m.input.CursorEnd()
+	m.input.Placeholder = "workspace name"
+	m.input.Focus()
+	m.mode = modeRenameWorkspace
+	m.status = "rename workspace"
+	m.err = ""
+	return m, nil
+}
+
+func (m model) finishRenameWorkspace() (tea.Model, tea.Cmd) {
+	name := m.input.Value()
+	if err := m.store.RenameWorkspace(m.renameWorkspaceID, name); err != nil {
+		m.err = err.Error()
+		return m, nil
+	}
+	name = strings.Join(strings.Fields(name), " ")
+	renamedID := m.renameWorkspaceID
+	returnMode := m.renameReturnMode
+	m.renameWorkspaceID = 0
+	m.input.SetValue(m.renameDraft)
+	m.input.CursorEnd()
+	m.renameDraft = ""
+	m.input.Placeholder = "message " + m.cfg.Active().Model
+	m.err = ""
+	m.status = "renamed workspace: " + name
+	if m.activeWorkspaceID == renamedID {
+		m.activeWorkspaceName = name
+	}
+	if returnMode == modeWorkspace {
+		updated, cmd := m.showWorkspaces()
+		m = updated.(model)
+		m.status = "renamed workspace: " + name
+		return m, cmd
+	}
+	m.mode = modeChat
+	m.input.Focus()
+	return m, nil
+}
+
+func (m model) cancelRenameWorkspace() (tea.Model, tea.Cmd) {
+	returnMode := m.renameReturnMode
+	m.renameWorkspaceID = 0
+	m.input.SetValue(m.renameDraft)
+	m.input.CursorEnd()
+	m.renameDraft = ""
+	m.input.Placeholder = "message " + m.cfg.Active().Model
+	m.mode = returnMode
+	if m.mode == modeChat {
+		m.input.Focus()
+	}
+	m.status = "rename canceled"
+	m.err = ""
+	return m, nil
 }

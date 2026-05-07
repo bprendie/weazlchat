@@ -25,6 +25,8 @@ func (m model) View() string {
 		body = m.styles.panel.Render(fmt.Sprintf("Server URL for %s / %s\n\n%s", p.Type, p.Model, m.input.View()))
 	case modeLoading:
 		body = m.styles.panel.Render(fmt.Sprintf("%s loading previous session", m.working.View()))
+	case modeRenameWorkspace:
+		body = m.styles.panel.Render("Rename workspace\n\n" + m.input.View())
 	case modeSessions:
 		body = m.sessions.View()
 	case modeWorkspace:
@@ -151,14 +153,24 @@ func (m model) helpText() string {
 	if m.mode == modeLoading {
 		return "loading previous session | ctrl+c quit"
 	}
+	if m.mode == modeRenameWorkspace {
+		return "enter save rename | esc cancel | ctrl+c quit"
+	}
 	if m.mode == modeSessions {
 		return "enter resume | ctrl+d delete session | esc back | ctrl+c quit"
+	}
+	if m.mode == modeWorkspace {
+		return "enter replay | ctrl+e rename | esc back | ctrl+c quit"
 	}
 	mouseHelp := "ctrl+m copy"
 	if !m.mouseScroll {
 		mouseHelp = "ctrl+m mouse"
 	}
-	return "enter send/select | wheel/pgup/pgdn scroll | " + mouseHelp + " | ctrl+t trim | ctrl+r sessions | ctrl+s save | ctrl+c quit"
+	renameHelp := ""
+	if m.activeWorkspaceID != 0 {
+		renameHelp = " | ctrl+e rename"
+	}
+	return "enter send/select | wheel/pgup/pgdn scroll | " + mouseHelp + " | ctrl+t trim | ctrl+r sessions | ctrl+s save" + renameHelp + " | ctrl+c quit"
 }
 
 // inputView returns the input field view with paste indicator if applicable

@@ -87,3 +87,34 @@ func TestContextCheckpointRoundTrip(t *testing.T) {
 		t.Fatalf("len(after) = %d, want 0", len(after))
 	}
 }
+
+func TestRenameWorkspace(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "test.sqlite3"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if err := store.CreateVault("pw"); err != nil {
+		t.Fatalf("CreateVault: %v", err)
+	}
+	if err := store.CreateSession("s1", "title", "provider", "model"); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	id, err := store.SaveWorkspace("old name", "s1", "snapshot", 0)
+	if err != nil {
+		t.Fatalf("SaveWorkspace: %v", err)
+	}
+	if err := store.RenameWorkspace(id, "  new   name  "); err != nil {
+		t.Fatalf("RenameWorkspace: %v", err)
+	}
+	saves, err := store.WorkspaceSaves(10)
+	if err != nil {
+		t.Fatalf("WorkspaceSaves: %v", err)
+	}
+	if len(saves) != 1 || saves[0].Name != "new name" {
+		t.Fatalf("saves = %#v, want renamed workspace", saves)
+	}
+}

@@ -6,18 +6,33 @@ import (
 	"strings"
 )
 
-func (s *Store) SaveWorkspace(name, sessionID, snapshot string, throughMessageID int64) error {
+func (s *Store) SaveWorkspace(name, sessionID, snapshot string, throughMessageID int64) (int64, error) {
 	if !s.unlocked {
-		return errors.New("database is locked")
+		return 0, errors.New("database is locked")
 	}
 	blob, err := s.encrypt(snapshot)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	_, err = s.db.Exec(
+	result, err := s.db.Exec(
 		`insert into workspace_saves (name, session_id, snapshot, through_message_id) values (?, ?, ?, ?)`,
 		name, sessionID, blob, throughMessageID,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func (s *Store) RenameWorkspace(id int64, name string) error {
+	if !s.unlocked {
+		return errors.New("database is locked")
+	}
+	name = strings.Join(strings.Fields(name), " ")
+	if name == "" {
+		return errors.New("workspace name is required")
+	}
+	_, err := s.db.Exec(`update workspace_saves set name = ? where id = ?`, name, id)
 	return err
 }
 

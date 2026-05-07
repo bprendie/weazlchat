@@ -28,44 +28,50 @@ const (
 	modeChat
 	modeSessions
 	modeWorkspace
+	modeRenameWorkspace
 )
 
 type model struct {
-	cfg           config.Config
-	cfgPath       string
-	store         *storage.Store
-	toolRegistry  *tools.Registry
-	styles        styles
-	mode          mode
-	width         int
-	height        int
-	input         textinput.Model
-	viewport      viewport.Model
-	markdown      markdownRenderer
-	sessions      list.Model
-	workspaces    list.Model
-	working       spinner.Model
-	contextBar    progress.Model
-	session       storage.Session
-	messages      []storage.Message
-	checkpoint    storage.ContextCheckpoint
-	hasCheckpoint bool
-	err           string
-	status        string
-	thinking      bool
-	trimming      bool
-	mouseScroll   bool
-	stream        <-chan streamEvent
-	streamText    string
-	streamAt      time.Time
-	reqIn         int
-	reqOut        int
-	pasteText     string
-	pasteLines    int
-	historyIdx    int
-	historyDraft  string
-	pendingTools  []llm.ToolCall
-	toolResults   []string
+	cfg                 config.Config
+	cfgPath             string
+	store               *storage.Store
+	toolRegistry        *tools.Registry
+	styles              styles
+	mode                mode
+	width               int
+	height              int
+	input               textinput.Model
+	viewport            viewport.Model
+	markdown            markdownRenderer
+	sessions            list.Model
+	workspaces          list.Model
+	working             spinner.Model
+	contextBar          progress.Model
+	activeWorkspaceID   int64
+	activeWorkspaceName string
+	renameWorkspaceID   int64
+	renameReturnMode    mode
+	renameDraft         string
+	session             storage.Session
+	messages            []storage.Message
+	checkpoint          storage.ContextCheckpoint
+	hasCheckpoint       bool
+	err                 string
+	status              string
+	thinking            bool
+	trimming            bool
+	mouseScroll         bool
+	stream              <-chan streamEvent
+	streamText          string
+	streamAt            time.Time
+	reqIn               int
+	reqOut              int
+	pasteText           string
+	pasteLines          int
+	historyIdx          int
+	historyDraft        string
+	pendingTools        []llm.ToolCall
+	toolResults         []string
 }
 
 type streamEvent struct {
@@ -191,6 +197,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.mode == modeSessions {
 				return m.deleteSelectedSession()
 			}
+		case "ctrl+e":
+			if (m.mode == modeChat && !m.thinking) || m.mode == modeWorkspace {
+				return m.startRenameWorkspace()
+			}
 		case "pgup":
 			if m.mode == modeChat {
 				m.viewport.PageUp()
@@ -215,6 +225,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.mode == modeSessions || m.mode == modeWorkspace {
 				m.mode = modeChat
 				m.input.Focus()
+			}
+			if m.mode == modeRenameWorkspace {
+				return m.cancelRenameWorkspace()
 			}
 		case "enter":
 			return m.handleEnter()
@@ -326,6 +339,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.messages = msg.messages
 		m.checkpoint = msg.checkpoint
 		m.hasCheckpoint = msg.hasCheckpoint
+		m.activeWorkspaceID = 0
+		m.activeWorkspaceName = ""
 		m.historyIdx = 0
 		m.historyDraft = ""
 		m.mode = modeChat
@@ -357,6 +372,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case modeWorkspace:
 		var cmd tea.Cmd
 		m.workspaces, cmd = m.workspaces.Update(msg)
+		cmds = append(cmds, cmd)
+	case modeRenameWorkspace:
+		var cmd tea.Cmd
+		m.input, cmd = m.input.Update(msg)
 		cmds = append(cmds, cmd)
 	default:
 		var cmd tea.Cmd

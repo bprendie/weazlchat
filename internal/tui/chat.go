@@ -63,6 +63,8 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		if ok {
 			return m.loadWorkspace(storage.WorkspaceSave(item))
 		}
+	case modeRenameWorkspace:
+		return m.finishRenameWorkspace()
 	case modeChat:
 		if m.thinking {
 			return m, nil
