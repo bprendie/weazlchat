@@ -43,24 +43,16 @@ func (m model) View() string {
 }
 
 func (m model) renameWorkspaceView() string {
-	base := ""
-	if m.renameReturnMode == modeWorkspace {
-		base = m.workspaces.View()
-	} else {
-		base = m.viewport.View() + "\n" + m.metricsView()
-	}
 	w := max(20, m.width-6)
-	h := max(5, m.height-16)
-	popupWidth := min(64, max(32, w-8))
+	popupWidth := min(64, max(24, w-4))
 	prompt := m.styles.help.Render("shown in picker as <name>: timestamp")
-	popup := lipgloss.NewStyle().
+	return lipgloss.PlaceHorizontal(w, lipgloss.Center, lipgloss.NewStyle().
 		Width(popupWidth).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(crushPink).
 		Background(panel).
 		Padding(1, 2).
-		Render("Rename workspace\n\n" + m.input.View() + "\n" + prompt)
-	return lipgloss.Place(w, h+4, lipgloss.Center, lipgloss.Center, popup, lipgloss.WithWhitespaceChars(" "), lipgloss.WithWhitespaceForeground(muted), lipgloss.WithWhitespaceBackground(lipgloss.Color("#0D0D12"))) + "\n" + base
+		Render("Rename workspace\n\n"+m.input.View()+"\n"+prompt))
 }
 
 // renderMessages updates the viewport with the current message history and streaming state
@@ -191,7 +183,7 @@ func (m model) helpText() string {
 	if m.activeWorkspaceID != 0 {
 		renameHelp = " | ctrl+e rename"
 	}
-	return "enter send/select | wheel/pgup/pgdn scroll | " + mouseHelp + " | ctrl+t trim | ctrl+r sessions | ctrl+s save" + renameHelp + " | ctrl+c quit"
+	return "enter send/select | wheel/pgup/pgdn scroll | " + mouseHelp + " | ctrl+t trim | ctrl+r workspaces | ctrl+s save" + renameHelp + " | ctrl+c quit"
 }
 
 // inputView returns the input field view with paste indicator if applicable

@@ -188,7 +188,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "ctrl+r":
 			if m.mode == modeChat {
-				return m.showSessions()
+				return m.showWorkspaces()
 			}
 		case "ctrl+w":
 			if m.mode == modeChat {
