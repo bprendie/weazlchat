@@ -215,11 +215,20 @@ func (m model) loadWorkspace(save storage.WorkspaceSave) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) saveWorkspace() {
-	name := fmt.Sprintf("%s @ %s", m.session.Title, time.Now().Format("15:04:05"))
 	throughID := int64(0)
 	if len(m.messages) > 0 {
 		throughID = m.messages[len(m.messages)-1].ID
 	}
+	if m.activeWorkspaceID != 0 {
+		if err := m.store.UpdateWorkspace(m.activeWorkspaceID, m.session.ID, m.viewport.View(), throughID); err != nil {
+			m.err = err.Error()
+			return
+		}
+		m.status = "workspace updated: " + m.activeWorkspaceName
+		m.err = ""
+		return
+	}
+	name := fmt.Sprintf("%s @ %s", m.session.Title, time.Now().Format("15:04:05"))
 	id, err := m.store.SaveWorkspace(name, m.session.ID, m.viewport.View(), throughID)
 	if err != nil {
 		m.err = err.Error()
