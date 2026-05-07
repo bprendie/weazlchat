@@ -111,6 +111,12 @@ var modelThinkingPhrases = []string{
 	"syncing_with_the_construct",
 	"scrambling_bio_signals",
 	"system_reboot_imminent",
+	"buuu_ddy",
+	"wheezing_the_juice",
+	"munching_the_grindage",
+	"chilling_the_tokens",
+	"chilling_up_on_here",
+	"taxing_the_gig",
 }
 
 type contextTrimMsg struct {
@@ -989,7 +995,6 @@ func transcriptForSummary(messages []storage.Message) string {
 	}
 	return b.String()
 }
-
 
 func (m model) startStream(ch chan<- streamEvent, prompt string, history []storage.Message) tea.Cmd {
 	return func() tea.Msg {

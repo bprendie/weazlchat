@@ -62,7 +62,7 @@ WeazlChat automatically trims context when the estimate reaches 97% of the confi
 
 ## TUI Feedback
 
-Model responses use Bubble spinner animations with rotating status phrases such as `hacking_the_gibson` and `jacking_into_the_matrix`. The phrase stays stable for short responses and changes only a couple of times during longer generations.
+Model responses use Bubble spinner animations with rotating status phrases such as `hacking_the_gibson`, `jacking_into_the_matrix`, `wheezing_the_juice`, and `chilling_the_tokens`. The phrases favor active `-ing` wording, stay stable for short responses, and change only a couple of times during longer generations.
 
 Tool calls stay compact in the transcript as `🔧 using tools`, while context checkpointing uses a distinct compaction animation so it is clear when WeazlChat is summarizing older history instead of waiting on a normal response.
 
