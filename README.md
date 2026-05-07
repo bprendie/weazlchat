@@ -163,6 +163,8 @@ Large pasted blocks are stored as the full prompt payload under the hood, but di
 
 WeazlChat is not just a static chat window. It supports function calling tools that let the AI model interact with external services and your local workspace. Tools execute automatically when allowed by their safety level.
 
+Important: tools only work with models that understand function/tool calling. If your model does not support tool calls, normal chat still works, but WeazlChat cannot reliably ask it to run web search, weather, file, shell, SQLite, memory, or other tools. Use a tool-capable local model for the fun stuff.
+
 ### Enabling Tools
 
 The installer can write this section for you, but to edit it manually, update `~/.config/weazlchat/config.json`:
