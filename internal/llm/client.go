@@ -63,12 +63,12 @@ func (c Client) WithTools(tools []map[string]any) Client {
 }
 
 func (c Client) Stream(ctx context.Context, history []storage.Message, prompt string, onEvent func(StreamEvent)) (Usage, error) {
-	messages := chatMessages(history, prompt)
-
 	switch strings.ToLower(c.provider.Type) {
 	case "vllm":
+		messages := chatMessages(history, prompt)
 		return c.streamOpenAICompat(ctx, messages, onEvent)
 	case "ollama":
+		messages := ollamaChatMessages(history, prompt)
 		return c.streamOllama(ctx, messages, onEvent)
 	default:
 		return Usage{}, fmt.Errorf("unsupported provider type %q", c.provider.Type)
@@ -119,6 +119,61 @@ func chatMessages(history []storage.Message, prompt string) []ChatMessage {
 	}
 	if strings.TrimSpace(prompt) != "" {
 		messages = append(messages, ChatMessage{Role: "user", Content: prompt})
+	}
+	return messages
+}
+
+type ollamaMessage struct {
+	Role      string           `json:"role"`
+	Content   string           `json:"content,omitempty"`
+	ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
+	ToolName  string           `json:"tool_name,omitempty"`
+}
+
+type ollamaToolCall struct {
+	Type     string `json:"type,omitempty"`
+	Function struct {
+		Index     int            `json:"index,omitempty"`
+		Name      string         `json:"name"`
+		Arguments map[string]any `json:"arguments"`
+	} `json:"function"`
+}
+
+func ollamaChatMessages(history []storage.Message, prompt string) []ollamaMessage {
+	messages := make([]ollamaMessage, 0, len(history)+1)
+	toolNames := make(map[string]string)
+	for _, msg := range history {
+		cm := ollamaMessage{Role: msg.Role, Content: msg.Content}
+		if msg.Role == "assistant" && msg.ToolCalls != "" {
+			var toolCalls []ToolCall
+			if err := json.Unmarshal([]byte(msg.ToolCalls), &toolCalls); err == nil {
+				cm.Content = ""
+				cm.ToolCalls = make([]ollamaToolCall, 0, len(toolCalls))
+				for i, call := range toolCalls {
+					toolNames[call.ID] = call.Function.Name
+					var args map[string]any
+					if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
+						args = map[string]any{}
+					}
+					var tc ollamaToolCall
+					tc.Type = "function"
+					tc.Function.Index = i
+					tc.Function.Name = call.Function.Name
+					tc.Function.Arguments = args
+					cm.ToolCalls = append(cm.ToolCalls, tc)
+				}
+			}
+		}
+		if msg.Role == "tool" {
+			cm.ToolName = toolNames[msg.ToolCallID]
+			if cm.ToolName == "" {
+				cm.ToolName = msg.ToolCallID
+			}
+		}
+		messages = append(messages, cm)
+	}
+	if strings.TrimSpace(prompt) != "" {
+		messages = append(messages, ollamaMessage{Role: "user", Content: prompt})
 	}
 	return messages
 }
@@ -235,7 +290,7 @@ func (c Client) streamOpenAICompat(ctx context.Context, messages []ChatMessage, 
 	return usage, scanner.Err()
 }
 
-func (c Client) streamOllama(ctx context.Context, messages []ChatMessage, onEvent func(StreamEvent)) (Usage, error) {
+func (c Client) streamOllama(ctx context.Context, messages []ollamaMessage, onEvent func(StreamEvent)) (Usage, error) {
 	reqBody := map[string]any{
 		"model":    c.provider.Model,
 		"messages": messages,

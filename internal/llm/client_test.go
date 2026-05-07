@@ -38,3 +38,29 @@ func TestChatMessagesAppendsNonEmptyPrompt(t *testing.T) {
 		t.Fatalf("message = %#v, want user hello", messages[0])
 	}
 }
+
+func TestOllamaChatMessagesUseToolNameAndObjectArguments(t *testing.T) {
+	history := []storage.Message{
+		{Role: "assistant", ToolCalls: `[{"id":"call_1","type":"function","function":{"name":"calculate","arguments":"{\"operation\":\"add\",\"a\":1,\"b\":2}"}}]`},
+		{Role: "tool", Content: "1 + 2 = 3", ToolCallID: "call_1"},
+	}
+
+	messages := ollamaChatMessages(history, "")
+
+	if len(messages) != 2 {
+		t.Fatalf("message count = %d, want 2: %#v", len(messages), messages)
+	}
+	if messages[0].Role != "assistant" || len(messages[0].ToolCalls) != 1 {
+		t.Fatalf("assistant tool calls were not converted: %#v", messages[0])
+	}
+	call := messages[0].ToolCalls[0]
+	if call.Function.Name != "calculate" {
+		t.Fatalf("tool name = %q, want calculate", call.Function.Name)
+	}
+	if call.Function.Arguments["operation"] != "add" || call.Function.Arguments["a"] != float64(1) {
+		t.Fatalf("tool arguments were not decoded as an object: %#v", call.Function.Arguments)
+	}
+	if messages[1].Role != "tool" || messages[1].ToolName != "calculate" || messages[1].Content != "1 + 2 = 3" {
+		t.Fatalf("tool result was not converted for Ollama: %#v", messages[1])
+	}
+}

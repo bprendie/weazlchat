@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -97,7 +98,12 @@ func (c Client) post(ctx context.Context, path string, body any) (*http.Response
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		defer resp.Body.Close()
-		return nil, fmt.Errorf("%s returned %s", url, resp.Status)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		detail := strings.TrimSpace(string(body))
+		if detail == "" {
+			return nil, fmt.Errorf("%s returned %s", url, resp.Status)
+		}
+		return nil, fmt.Errorf("%s returned %s: %s", url, resp.Status, detail)
 	}
 	return resp, nil
 }

@@ -50,7 +50,7 @@ Markdown rendering is enabled by default with Charmbracelet Glamour, so model ou
 
 ## Build From Source
 
-WeazlChat is a Go app, but it uses SQLite through `go-sqlite3`, so builds need CGO and a working C compiler. That is the one little bit of yak hair.
+WeazlChat is a Go app, but it uses SQLite through `go-sqlite3`, so builds need Go 1.25 or newer, CGO, and a working C compiler. That is the one little bit of yak hair.
 
 ### macOS
 
