@@ -26,7 +26,7 @@ func (m model) View() string {
 	case modeLoading:
 		body = m.styles.panel.Render(fmt.Sprintf("%s loading previous session", m.working.View()))
 	case modeRenameWorkspace:
-		body = m.styles.panel.Render("Rename workspace\n\n" + m.input.View())
+		body = m.renameWorkspaceView()
 	case modeSessions:
 		body = m.sessions.View()
 	case modeWorkspace:
@@ -40,6 +40,27 @@ func (m model) View() string {
 	}
 	help := m.styles.help.Render(m.helpText())
 	return m.styles.frame.Width(m.width).Height(m.height).Render(strings.Join([]string{header, status, body, help}, "\n"))
+}
+
+func (m model) renameWorkspaceView() string {
+	base := ""
+	if m.renameReturnMode == modeWorkspace {
+		base = m.workspaces.View()
+	} else {
+		base = m.viewport.View() + "\n" + m.metricsView()
+	}
+	w := max(20, m.width-6)
+	h := max(5, m.height-16)
+	popupWidth := min(64, max(32, w-8))
+	prompt := m.styles.help.Render("saved as " + m.renamePrefix + "<name>")
+	popup := lipgloss.NewStyle().
+		Width(popupWidth).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(crushPink).
+		Background(panel).
+		Padding(1, 2).
+		Render("Rename workspace\n\n" + m.input.View() + "\n" + prompt)
+	return lipgloss.Place(w, h+4, lipgloss.Center, lipgloss.Center, popup, lipgloss.WithWhitespaceChars(" "), lipgloss.WithWhitespaceForeground(muted), lipgloss.WithWhitespaceBackground(lipgloss.Color("#0D0D12"))) + "\n" + base
 }
 
 // renderMessages updates the viewport with the current message history and streaming state

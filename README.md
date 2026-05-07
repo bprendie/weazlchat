@@ -110,7 +110,7 @@ Run setup first if you want the guided config flow:
 - `ctrl+n`: start a new session
 - `ctrl+r`: resume from session history
 - `ctrl+d`: delete selected session from history
-- `ctrl+e`: rename the active or selected workspace save
+- `ctrl+e`: rename the active or selected workspace save; from chat, this creates the save first if needed
 - `ctrl+s`: save current workspace view
 - `ctrl+w`: list workspace saves
 - `ctrl+t`: trim context into a summary checkpoint

@@ -32,8 +32,18 @@ func (s *Store) RenameWorkspace(id int64, name string) error {
 	if name == "" {
 		return errors.New("workspace name is required")
 	}
-	_, err := s.db.Exec(`update workspace_saves set name = ? where id = ?`, name, id)
-	return err
+	result, err := s.db.Exec(`update workspace_saves set name = ? where id = ?`, name, id)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return errors.New("workspace save not found")
+	}
+	return nil
 }
 
 func (s *Store) UpdateWorkspace(id int64, sessionID, snapshot string, throughMessageID int64) error {

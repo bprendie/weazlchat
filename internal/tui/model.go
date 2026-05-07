@@ -49,9 +49,11 @@ type model struct {
 	contextBar          progress.Model
 	activeWorkspaceID   int64
 	activeWorkspaceName string
+	activeWorkspaceAt   time.Time
 	renameWorkspaceID   int64
 	renameReturnMode    mode
 	renameDraft         string
+	renamePrefix        string
 	session             storage.Session
 	messages            []storage.Message
 	checkpoint          storage.ContextCheckpoint
@@ -341,6 +343,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.hasCheckpoint = msg.hasCheckpoint
 		m.activeWorkspaceID = 0
 		m.activeWorkspaceName = ""
+		m.activeWorkspaceAt = time.Time{}
 		m.historyIdx = 0
 		m.historyDraft = ""
 		m.mode = modeChat
