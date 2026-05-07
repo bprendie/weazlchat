@@ -14,6 +14,7 @@ type Config struct {
 	Providers      map[string]Provider `json:"providers"`
 	Database       Database            `json:"database"`
 	UI             UI                  `json:"ui"`
+	SSH            SSH                 `json:"ssh"`
 	Tools          Tools               `json:"tools"`
 }
 
@@ -33,6 +34,14 @@ type UI struct {
 	ResumeLastSession bool   `json:"resume_last_session"`
 	RenderMarkdown    *bool  `json:"render_markdown,omitempty"`
 	MarkdownStyle     string `json:"markdown_style,omitempty"`
+}
+
+type SSH struct {
+	Enabled            bool   `json:"enabled"`
+	Listen             string `json:"listen"`
+	HostKeyPath        string `json:"host_key_path"`
+	AuthorizedKeysPath string `json:"authorized_keys_path"`
+	UserDataDir        string `json:"user_data_dir"`
 }
 
 type Tools struct {
@@ -110,6 +119,13 @@ func Default() Config {
 			RenderMarkdown:    boolPtr(true),
 			MarkdownStyle:     "dark",
 		},
+		SSH: SSH{
+			Enabled:            false,
+			Listen:             "0.0.0.0:23234",
+			HostKeyPath:        filepath.Join(appConfigDir(), "ssh_host_ed25519"),
+			AuthorizedKeysPath: filepath.Join(appConfigDir(), "authorized_keys"),
+			UserDataDir:        filepath.Join(dataDir, "ssh-users"),
+		},
 		Tools: Tools{
 			Enabled:        false,
 			AutoExecute:    true,
@@ -153,6 +169,18 @@ func (c *Config) withDefaults() {
 	if c.UI.MarkdownStyle == "" {
 		c.UI.MarkdownStyle = def.UI.MarkdownStyle
 	}
+	if c.SSH.Listen == "" {
+		c.SSH.Listen = def.SSH.Listen
+	}
+	if c.SSH.HostKeyPath == "" {
+		c.SSH.HostKeyPath = def.SSH.HostKeyPath
+	}
+	if c.SSH.AuthorizedKeysPath == "" {
+		c.SSH.AuthorizedKeysPath = def.SSH.AuthorizedKeysPath
+	}
+	if c.SSH.UserDataDir == "" {
+		c.SSH.UserDataDir = def.SSH.UserDataDir
+	}
 	if c.Tools.MaxOutputChars <= 0 {
 		c.Tools.MaxOutputChars = def.Tools.MaxOutputChars
 	}
@@ -173,11 +201,19 @@ func configPath() string {
 	if p := os.Getenv("WEAZLCHAT_CONFIG"); p != "" {
 		return p
 	}
+	return filepath.Join(appConfigDir(), "config.json")
+}
+
+func appConfigDir() string {
+	return filepath.Join(configDir(), appName)
+}
+
+func configDir() string {
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, appName, "config.json")
+		return xdg
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", appName, "config.json")
+	return filepath.Join(home, ".config")
 }
 
 func dataDir() string {

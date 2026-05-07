@@ -227,6 +227,43 @@ Workspace tools only operate under configured `workspace_roots`.
 - vLLM: the loaded model must support function calling, such as models fine-tuned for tool use.
 - Ollama: you need a model with native tool support. Good starting points include `llama3.1`, `mistral-nemo`, and `qwen2.5`.
 
+## SSH App
+
+The `wish-ssh-app` branch includes an experimental SSH server binary:
+
+```sh
+go build -o weazlchat-ssh ./cmd/weazlchat-ssh
+```
+
+`weazlchat-ssh` runs WeazlChat as a Wish-powered SSH app. It is not OpenSSH and it does not provide shell access. Clients connect directly into the TUI:
+
+```sh
+ssh -p 23234 user@server
+```
+
+SSH mode uses the server's `~/.config/weazlchat/config.json` for provider settings, tool settings, and API keys. Each authorized SSH public key gets its own encrypted SQLite database under `ssh.user_data_dir`, so users do not share chat history, memories, workspace saves, or vault passwords.
+
+Add allowed client public keys to:
+
+```sh
+~/.config/weazlchat/authorized_keys
+```
+
+SSH config lives in `config.json`:
+
+```json
+{
+  "ssh": {
+    "listen": "0.0.0.0:23234",
+    "host_key_path": "/home/user/.config/weazlchat/ssh_host_ed25519",
+    "authorized_keys_path": "/home/user/.config/weazlchat/authorized_keys",
+    "user_data_dir": "/home/user/.local/share/weazlchat/ssh-users"
+  }
+}
+```
+
+Heads up: tools run on the server machine and use the shared server-side config. That means file, shell, SQLite, web search, weather, stock, and memory tools operate from the server's point of view.
+
 ### Security
 
 We take local privacy seriously, but this is still a small local app, not a hardware security module. Your vault is only as good as the password you choose. The bcrypt password check and encrypted payloads are there to keep casual prying eyes out; they are not a promise that a weak password will survive a determined offline attack against your database.

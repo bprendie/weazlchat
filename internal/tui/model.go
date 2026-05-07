@@ -66,6 +66,7 @@ type model struct {
 	historyDraft  string
 	pendingTools  []llm.ToolCall
 	toolResults   []string
+	ignoreKeysTil time.Time
 }
 
 type streamEvent struct {
@@ -86,7 +87,17 @@ type contextTrimMsg struct {
 	err             error
 }
 
-func New(cfg config.Config, cfgPath string, store *storage.Store, toolRegistry *tools.Registry) tea.Model {
+type Option func(*model)
+
+func WithInitialKeyIgnore(d time.Duration) Option {
+	return func(m *model) {
+		if d > 0 {
+			m.ignoreKeysTil = time.Now().Add(d)
+		}
+	}
+}
+
+func New(cfg config.Config, cfgPath string, store *storage.Store, toolRegistry *tools.Registry, opts ...Option) tea.Model {
 	ti := textinput.New()
 	ti.Placeholder = "database password"
 	ti.EchoMode = textinput.EchoPassword
@@ -105,7 +116,7 @@ func New(cfg config.Config, cfgPath string, store *storage.Store, toolRegistry *
 	)
 	contextBar := progress.New(progress.WithDefaultGradient(), progress.WithoutPercentage())
 
-	return model{
+	m := model{
 		cfg:          cfg,
 		cfgPath:      cfgPath,
 		store:        store,
@@ -122,6 +133,10 @@ func New(cfg config.Config, cfgPath string, store *storage.Store, toolRegistry *
 		mouseScroll:  true,
 		status:       "private local chat",
 	}
+	for _, opt := range opts {
+		opt(&m)
+	}
+	return m
 }
 
 func (m model) Init() tea.Cmd {
@@ -155,6 +170,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 	case tea.KeyMsg:
+		if m.shouldIgnoreInitialKey(msg) {
+			return m, nil
+		}
 		if m.mode == modeChat && !m.thinking {
 			if updated, cmd, handled := m.handleChatKey(msg); handled {
 				return updated, cmd
@@ -364,6 +382,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 	return m, tea.Batch(cmds...)
+}
+
+func (m model) shouldIgnoreInitialKey(msg tea.KeyMsg) bool {
+	if m.ignoreKeysTil.IsZero() || time.Now().After(m.ignoreKeysTil) {
+		return false
+	}
+	if msg.String() == "ctrl+c" {
+		return false
+	}
+	return m.mode == modeVault || m.mode == modeServer
 }
 
 func max(a, b int) int {

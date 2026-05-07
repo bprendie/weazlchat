@@ -22,6 +22,13 @@
     "render_markdown": true,
     "markdown_style": "dark"
   },
+  "ssh": {
+    "enabled": false,
+    "listen": "0.0.0.0:23234",
+    "host_key_path": "/home/user/.config/weazlchat/ssh_host_ed25519",
+    "authorized_keys_path": "/home/user/.config/weazlchat/authorized_keys",
+    "user_data_dir": "/home/user/.local/share/weazlchat/ssh-users"
+  },
   "tools": {
     "enabled": true,
     "auto_execute_safe": true,
