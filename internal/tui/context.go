@@ -54,7 +54,10 @@ func (m model) trimContext(auto bool, prompt string, currentPromptID, throughID 
 	m.reqOut = 0
 	m.err = ""
 	m.status = "trimming context"
-	return m, summarizeContext(m.cfg.Active(), m.store, m.session.ID, toSummarize, auto, prompt, currentPromptID, throughID)
+	return m, tea.Batch(
+		summarizeContext(m.cfg.Active(), m.store, m.session.ID, toSummarize, auto, prompt, currentPromptID, throughID),
+		m.working.Tick,
+	)
 }
 
 func summarizeContext(provider config.Provider, store *storage.Store, sessionID string, messages []storage.Message, auto bool, prompt string, currentPromptID, throughID int64) tea.Cmd {
