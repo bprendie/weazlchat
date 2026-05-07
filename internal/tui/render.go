@@ -173,7 +173,7 @@ func (m model) helpText() string {
 		return "enter resume | ctrl+d delete session | esc back | ctrl+c quit"
 	}
 	if m.mode == modeWorkspace {
-		return "enter replay | ctrl+e rename | esc back | ctrl+c quit"
+		return "enter replay | ctrl+e rename | ctrl+d delete | esc back | ctrl+c quit"
 	}
 	mouseHelp := "ctrl+m copy"
 	if !m.mouseScroll {

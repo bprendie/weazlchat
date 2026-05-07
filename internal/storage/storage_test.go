@@ -127,4 +127,14 @@ func TestRenameWorkspace(t *testing.T) {
 	if len(saves) != 1 || saves[0].Name != "new name" {
 		t.Fatalf("saves after update = %#v, want name preserved", saves)
 	}
+	if err := store.DeleteWorkspace(id); err != nil {
+		t.Fatalf("DeleteWorkspace: %v", err)
+	}
+	saves, err = store.WorkspaceSaves(10)
+	if err != nil {
+		t.Fatalf("WorkspaceSaves after delete: %v", err)
+	}
+	if len(saves) != 0 {
+		t.Fatalf("len(saves) = %d, want 0 after delete", len(saves))
+	}
 }

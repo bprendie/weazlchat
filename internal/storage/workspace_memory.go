@@ -71,6 +71,24 @@ func (s *Store) UpdateWorkspace(id int64, sessionID, snapshot string, throughMes
 	return nil
 }
 
+func (s *Store) DeleteWorkspace(id int64) error {
+	if !s.unlocked {
+		return errors.New("database is locked")
+	}
+	result, err := s.db.Exec(`delete from workspace_saves where id = ?`, id)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return errors.New("workspace save not found")
+	}
+	return nil
+}
+
 func (s *Store) WorkspaceSaves(limit int) ([]WorkspaceSave, error) {
 	rows, err := s.db.Query(`select id, name, session_id, through_message_id, created_at from workspace_saves order by created_at desc limit ?`, limit)
 	if err != nil {

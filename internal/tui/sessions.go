@@ -220,6 +220,29 @@ func (m model) loadWorkspace(save storage.WorkspaceSave) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m model) deleteSelectedWorkspace() (tea.Model, tea.Cmd) {
+	item, ok := m.workspaces.SelectedItem().(workspaceItem)
+	if !ok {
+		return m, nil
+	}
+	save := storage.WorkspaceSave(item)
+	if err := m.store.DeleteWorkspace(save.ID); err != nil {
+		m.err = err.Error()
+		return m, nil
+	}
+	if m.activeWorkspaceID == save.ID {
+		m.activeWorkspaceID = 0
+		m.activeWorkspaceName = ""
+		m.activeWorkspaceAt = time.Time{}
+	}
+	m.err = ""
+	m.status = "deleted workspace: " + workspaceLabel(save.Name)
+	updated, cmd := m.showWorkspaces()
+	m = updated.(model)
+	m.status = "deleted workspace: " + workspaceLabel(save.Name)
+	return m, cmd
+}
+
 func (m *model) saveWorkspace() {
 	throughID := int64(0)
 	if len(m.messages) > 0 {

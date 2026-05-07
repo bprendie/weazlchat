@@ -198,6 +198,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.mode == modeSessions {
 				return m.deleteSelectedSession()
 			}
+			if m.mode == modeWorkspace {
+				return m.deleteSelectedWorkspace()
+			}
 		case "ctrl+e":
 			if (m.mode == modeChat && !m.thinking) || m.mode == modeWorkspace {
 				return m.startRenameWorkspace()
