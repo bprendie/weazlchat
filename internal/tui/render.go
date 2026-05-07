@@ -10,6 +10,34 @@ import (
 	"github.com/bprendie/weazlchat/internal/storage"
 )
 
+func (m model) View() string {
+	header := renderLogo(ansiHeader(), max(20, m.width-6))
+	status := m.styles.status.Render(m.status)
+	if m.err != "" {
+		status = m.styles.system.Render("! " + m.err)
+	}
+	body := ""
+	switch m.mode {
+	case modeVault:
+		body = m.styles.panel.Render("Encrypted history password\n\n" + m.input.View())
+	case modeServer:
+		p := m.cfg.Active()
+		body = m.styles.panel.Render(fmt.Sprintf("Server URL for %s / %s\n\n%s", p.Type, p.Model, m.input.View()))
+	case modeSessions:
+		body = m.sessions.View()
+	case modeWorkspace:
+		body = m.workspaces.View()
+	default:
+		input := m.inputView()
+		if m.thinking {
+			input = m.thinkingView()
+		}
+		body = m.viewport.View() + "\n" + m.metricsView() + "\n" + m.styles.input.Width(max(20, m.width-6)).Render(input)
+	}
+	help := m.styles.help.Render(m.helpText())
+	return m.styles.frame.Width(m.width).Height(m.height).Render(strings.Join([]string{header, status, body, help}, "\n"))
+}
+
 // renderMessages updates the viewport with the current message history and streaming state
 func (m *model) renderMessages() {
 	var b strings.Builder
