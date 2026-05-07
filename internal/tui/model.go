@@ -54,6 +54,7 @@ type model struct {
 	status        string
 	thinking      bool
 	trimming      bool
+	mouseScroll   bool
 	stream        <-chan streamEvent
 	streamText    string
 	streamAt      time.Time
@@ -178,6 +179,7 @@ func New(cfg config.Config, cfgPath string, store *storage.Store, toolRegistry *
 		workspaces:   workspaces,
 		working:      working,
 		contextBar:   contextBar,
+		mouseScroll:  true,
 		status:       "private local chat",
 	}
 }
@@ -229,6 +231,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+t":
 			if m.mode == modeChat && !m.thinking {
 				return m.trimContext(false, "", 0, 0)
+			}
+		case "ctrl+m":
+			if m.mode == modeChat {
+				return m.toggleMouseMode()
 			}
 		case "ctrl+r":
 			if m.mode == modeChat {
@@ -661,6 +667,16 @@ func (m model) handleChatKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		}
 	}
 	return m, nil, false
+}
+
+func (m model) toggleMouseMode() (tea.Model, tea.Cmd) {
+	m.mouseScroll = !m.mouseScroll
+	if m.mouseScroll {
+		m.status = "mouse scroll enabled"
+		return m, tea.EnableMouseCellMotion
+	}
+	m.status = "copy mode enabled"
+	return m, tea.DisableMouse
 }
 
 func (m model) executeTools(inputTokens, outputTokens int) (tea.Model, tea.Cmd) {

@@ -115,7 +115,11 @@ func (m model) helpText() string {
 	if m.mode == modeSessions {
 		return "enter resume | ctrl+d delete session | esc back | ctrl+c quit"
 	}
-	return "enter send/select | up/down history | pgup/pgdn scroll | ctrl+t trim | ctrl+r sessions | ctrl+s save | ctrl+c quit"
+	mouseHelp := "ctrl+m copy"
+	if !m.mouseScroll {
+		mouseHelp = "ctrl+m mouse"
+	}
+	return "enter send/select | wheel/pgup/pgdn scroll | " + mouseHelp + " | ctrl+t trim | ctrl+r sessions | ctrl+s save | ctrl+c quit"
 }
 
 // inputView returns the input field view with paste indicator if applicable

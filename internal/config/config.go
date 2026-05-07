@@ -45,26 +45,31 @@ type Tools struct {
 
 func Load() (Config, string, error) {
 	path := configPath()
+	cfg, err := LoadPath(path)
+	return cfg, path, err
+}
+
+func LoadPath(path string) (Config, error) {
 	cfg := Default()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return cfg, path, err
+		return cfg, err
 	}
 	if err := os.MkdirAll(filepath.Dir(cfg.Database.Path), 0o700); err != nil {
-		return cfg, path, err
+		return cfg, err
 	}
 
 	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return cfg, path, Save(path, cfg)
+		return cfg, Save(path, cfg)
 	}
 	if err != nil {
-		return cfg, path, err
+		return cfg, err
 	}
 	if err := json.Unmarshal(b, &cfg); err != nil {
-		return cfg, path, err
+		return cfg, err
 	}
 	cfg.withDefaults()
-	return cfg, path, nil
+	return cfg, nil
 }
 
 func Save(path string, cfg Config) error {

@@ -42,16 +42,19 @@ func run() error {
 	if err != nil {
 		fmt.Printf("Could not query models: %v\n", err)
 		model := askString(reader, "Model name", defaultModel(providerType))
-		return writeConfig(cfgPath, configureTools(reader, cfg), providerType, serverURL, model)
+		contextWindow := askContextWindow(reader)
+		return writeConfig(cfgPath, configureTools(reader, cfg), providerType, serverURL, model, contextWindow)
 	}
 	if len(models) == 0 {
 		fmt.Println("Provider returned no models.")
 		model := askString(reader, "Model name", defaultModel(providerType))
-		return writeConfig(cfgPath, configureTools(reader, cfg), providerType, serverURL, model)
+		contextWindow := askContextWindow(reader)
+		return writeConfig(cfgPath, configureTools(reader, cfg), providerType, serverURL, model, contextWindow)
 	}
 
 	model := askModel(reader, models)
-	return writeConfig(cfgPath, configureTools(reader, cfg), providerType, serverURL, model)
+	contextWindow := askContextWindow(reader)
+	return writeConfig(cfgPath, configureTools(reader, cfg), providerType, serverURL, model, contextWindow)
 }
 
 func fetchModels(providerType, serverURL string) ([]string, error) {
@@ -121,18 +124,21 @@ func getJSON(ctx context.Context, url string, out any) error {
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-func writeConfig(cfgPath string, cfg config.Config, providerType, serverURL, model string) error {
+func writeConfig(cfgPath string, cfg config.Config, providerType, serverURL, model string, contextWindow int) error {
 	providerID := "primary-" + providerType
 	serverURL = normalizeServerURL(providerType, serverURL)
 	if cfg.Providers == nil {
 		cfg.Providers = map[string]config.Provider{}
+	}
+	if contextWindow <= 0 {
+		contextWindow = 32768
 	}
 	cfg.ActiveProvider = providerID
 	cfg.Providers[providerID] = config.Provider{
 		Type:          providerType,
 		ServerURL:     serverURL,
 		Model:         model,
-		ContextWindow: 32768,
+		ContextWindow: contextWindow,
 	}
 	if err := config.Save(cfgPath, cfg); err != nil {
 		return err
@@ -200,6 +206,42 @@ func askModel(reader *bufio.Reader, models []string) string {
 			return answer
 		}
 		fmt.Println("Enter a menu number or exact model name.")
+	}
+}
+
+func askContextWindow(reader *bufio.Reader) int {
+	choices := []struct {
+		Name   string
+		Tokens int
+		Note   string
+	}{
+		{Name: "small", Tokens: 8192},
+		{Name: "medium", Tokens: 16384},
+		{Name: "large", Tokens: 32768},
+		{Name: "xl", Tokens: 128000, Note: "may cause out-of-memory errors on smaller local servers"},
+	}
+	for {
+		fmt.Println("Context window:")
+		for i, choice := range choices {
+			label := fmt.Sprintf("  %d) %s (%d tokens)", i+1, choice.Name, choice.Tokens)
+			if choice.Note != "" {
+				label += " - " + choice.Note
+			}
+			fmt.Println(label)
+		}
+		answer := askString(reader, "Select", "large")
+		if answer == "" {
+			return 32768
+		}
+		if n, err := strconv.Atoi(answer); err == nil && n >= 1 && n <= len(choices) {
+			return choices[n-1].Tokens
+		}
+		for _, choice := range choices {
+			if strings.EqualFold(answer, choice.Name) {
+				return choice.Tokens
+			}
+		}
+		fmt.Println("Enter small, medium, large, xl, or a menu number.")
 	}
 }
 

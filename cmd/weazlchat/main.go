@@ -58,7 +58,7 @@ func main() {
 		toolRegistry.Register(tools.NewWebSearchTool(cfg.Tools.BraveAPIKey))
 	}
 
-	p := tea.NewProgram(tui.New(cfg, cfgPath, store, toolRegistry), tea.WithAltScreen())
+	p := tea.NewProgram(tui.New(cfg, cfgPath, store, toolRegistry), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "tui: %v\n", err)
 		os.Exit(1)

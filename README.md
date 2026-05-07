@@ -1,16 +1,18 @@
 # WeazlChat
 
-WeazlChat is a private local-first AI chat TUI for vLLM and Ollama servers.
+![WeazlChat screenshot](weazlchat.png)
+
+WeazlChat is a private, local-first AI chat TUI for vLLM and Ollama servers. Think of it as the straightforward, distraction-free terminal interface we all would have loved to have on our old Packard Bells and Mac Classics, wired up to modern local AI workflows. No fluff, no web wrappers, just your models and your prompt.
 
 ## Defaults
 
-On first launch, WeazlChat writes `~/.config/weazlchat/config.json` with local defaults:
+On first launch, WeazlChat drops a fresh `config.json` into `~/.config/weazlchat/` with sensible local defaults:
 
 - `local-vllm`: `http://localhost:8000`
 - model: `local-model`
 - `local-ollama`: `http://localhost:11434`
 
-The endpoint and model are read from config at runtime, not hardcoded into the chat client.
+Because hardcoding endpoints into a client is a terrible idea, WeazlChat reads the endpoint and model from the config at runtime.
 
 ## Run
 
@@ -24,61 +26,77 @@ go run ./cmd/weazlchat
 ./scripts/install.sh
 ```
 
-The installer builds `weazlchat`, places it in `~/.weazlchat/bin`, and adds that directory to your shell `PATH` when it is not already present.
-It also asks for your provider type and URL, queries the provider for available models, optionally asks for tool API keys, writes `~/.config/weazlchat/config.json`, and starts the TUI.
+The installer takes care of the heavy lifting. It builds `weazlchat`, tucks it into `~/.weazlchat/bin`, and adds that directory to your shell `PATH` if it is not already present.
 
-Provider URLs should be base URLs:
+During setup, you will be prompted for your provider type and URL. The script queries the provider for available models, optionally takes your tool API keys, writes `~/.config/weazlchat/config.json`, and boots straight into the TUI.
+
+Provider URL rules: base URLs only, please.
 
 - vLLM: `https://host:port` or `https://host`, without `/v1`
 - Ollama: `http://host:11434`, without `/api`
 
-The installer normalizes accidental `/v1` and `/api` suffixes before querying and saving.
-Tool API keys are optional. During setup, blank keeps an existing saved key and `-` clears it.
+If you accidentally paste the `/v1` or `/api` suffixes, the installer quietly fixes them for you. Tool API keys are optional: leave a prompt blank to keep an existing key, or type `-` to clear it.
 
-The first run asks you to create a local history password. Session history and workspace saves are stored in SQLite with a bcrypt-protected vault and AES-GCM encrypted payloads.
+The installer also asks for a context window preset:
+
+- `small`: `8192` tokens
+- `medium`: `16384` tokens
+- `large`: `32768` tokens
+- `xl`: `128000` tokens; heads up, this may cause out-of-memory errors on smaller local servers
+
+Finally, the first run asks you to set a local history password. Session history and workspace saves are stored in SQLite with a password-protected vault and AES-GCM encrypted payloads.
 
 ## Keys
 
-- `enter`: send message or select session
+- `enter`: send message / select session
 - `up` / `down`: recall previous prompts in the current session
+- mouse wheel: scroll chat history
 - `pgup` / `pgdown`: scroll chat history
 - `home` / `end`: jump to top or bottom of chat history
-- `ctrl+n`: new session
+- `ctrl+m`: toggle between copy mode and mouse scroll mode
+- `ctrl+n`: start a new session
 - `ctrl+r`: resume from session history
-- `ctrl+d`: delete selected session from session history
+- `ctrl+d`: delete selected session from history
 - `ctrl+s`: save current workspace view
 - `ctrl+w`: list workspace saves
 - `ctrl+t`: trim context into a summary checkpoint
 - `esc`: back to chat
 - `ctrl+c`: quit
 
-## Context Trimming
+## Telemetry And Context Trimming
 
-The status line includes a Bubble Charm progress bar showing estimated context usage for the active provider. Configure the provider's `context_window` in `~/.config/weazlchat/config.json`; it defaults to `32768` tokens.
+The status line at the bottom of the viewport gives you the vitals on your local inference. Alongside a Bubble Charm progress bar showing estimated context usage, you get token counts (`in` and `out`) and current generation speed in tokens per second (`t/s`).
 
-Press `ctrl+t` to ask the active model to summarize the current conversation into a compact checkpoint. The summary target scales with the configured context window, bounded between 500 and 2000 tokens. Future requests send that checkpoint summary plus only newer messages, instead of replaying the entire session from the beginning.
+The provider's `context_window` lives in `~/.config/weazlchat/config.json`; it defaults to `32768` tokens, or whatever preset you chose during install.
 
-WeazlChat automatically trims context when the estimate reaches 97% of the configured context window. The current user prompt stays outside the checkpoint and is sent normally after the trim finishes.
+Running out of room? Press `ctrl+t` to have the active model summarize the current conversation into a compact checkpoint. The summary target scales with your configured context window, bounded between 500 and 2000 tokens. Future requests send that checkpoint summary plus only the new messages, saving your hardware from replaying the entire session from the top.
+
+If you forget, WeazlChat has your back. It automatically trims context when the estimate hits 97% of your window. Your current prompt stays outside the checkpoint and is sent normally right after the trim finishes.
 
 ## TUI Feedback
 
-Model responses use Bubble spinner animations with rotating status phrases such as `hacking_the_gibson`, `jacking_into_the_matrix`, `wheezing_the_juice`, and `chilling_the_tokens`. The phrases favor active `-ing` wording, stay stable for short responses, and change only a couple of times during longer generations.
+While you wait for inference, WeazlChat uses Bubble spinner animations with rotating status phrases such as `hacking_the_gibson`, `jacking_into_the_matrix`, `wheezing_the_juice`, and `chilling_the_tokens`. The phrases favor active `-ing` wording, stay stable for short responses, and swap just a couple of times during longer generations to keep the screen quiet.
 
-Tool calls stay compact in the transcript as `🔧 using tools`, while context checkpointing uses a distinct compaction animation so it is clear when WeazlChat is summarizing older history instead of waiting on a normal response.
+Tool calls stay neatly tucked away in the transcript as `🔧 using tools`. When WeazlChat is summarizing older history into a checkpoint, it uses a distinct compaction animation so you know it is trimming context rather than hanging on a standard response.
 
-## Paste And Copy
+## Scrolling And Copy/Paste
 
-Large pasted blocks are stored as the full prompt payload but shown compactly in the input bar as `[PASTED n lines]`.
+Mouse wheel scrolling is enabled by default to make reviewing long conversations easy. Because the TUI has to capture the mouse to do this, standard terminal text selection can be intercepted.
 
-The TUI does not capture the mouse, so normal terminal highlight/copy works in the chat viewport. Use the keyboard scroll keys above when reviewing longer conversations.
+You have two ways to grab text:
+
+1. Toggle mode with `ctrl+m`: hit `ctrl+m` to enter copy mode. This releases mouse capture so your terminal can highlight and copy normally. Hit it again to go back to scrolling. The help line updates dynamically to show `ctrl+m copy` or `ctrl+m mouse`.
+2. Use `shift` + drag: depending on your terminal emulator, holding `shift` while dragging often bypasses TUI mouse capture entirely, letting you highlight text without switching modes.
+
+Large pasted blocks are stored as the full prompt payload under the hood, but displayed compactly in the input bar as `[PASTED n lines]` to keep your view tidy.
 
 ## Tool Support
 
-WeazlChat supports function calling (tools) that allow the AI model to interact with external services and perform calculations. Tools are executed automatically for safe operations (read-only) and can be configured in your config file.
+WeazlChat is not just a static chat window. It supports function calling tools that let the AI model interact with external services and your local workspace. Tools execute automatically when allowed by their safety level.
 
 ### Enabling Tools
 
-The installer can write this section for you. To edit it manually, update `~/.config/weazlchat/config.json`:
+The installer can write this section for you, but to edit it manually, update `~/.config/weazlchat/config.json`:
 
 ```json
 {
@@ -94,123 +112,64 @@ The installer can write this section for you. To edit it manually, update `~/.co
 }
 ```
 
-**Configuration Options:**
+Configuration options:
 
-- `enabled`: Set to `true` to enable tool support (default: `false`)
-- `auto_execute_safe`: Automatically execute safe (read-only) tools without confirmation (default: `true`)
-- `alpha_vantage_api_key`: API key for stock price lookups (optional, get free key at https://www.alphavantage.co/support/#api-key)
-- `brave_api_key`: API key for Brave web search lookups (optional)
-- `workspace_roots`: Directories that file, shell, and SQLite tools may read from
-- `max_output_chars`: Maximum characters returned by tools before truncation
-- `max_file_bytes`: Maximum file size for file search/read tools
+- `enabled`: flip to `true` to turn on tool support; default is `false`
+- `auto_execute_safe`: automatically run safe tools without asking for confirmation; default is `true`
+- `alpha_vantage_api_key`: API key for stock price lookups; optional
+- `brave_api_key`: API key for Brave web search lookups; optional
+- `workspace_roots`: restricted directories that file, shell, and SQLite tools are permitted to read from
+- `max_output_chars`: maximum characters returned by tools before they are truncated
+- `max_file_bytes`: maximum file size for local search/read tools
 
 ### Available Tools
 
-#### Calculator
-Performs basic mathematical operations. Always available when tools are enabled.
+#### General Utilities
 
-**Operations:** add, subtract, multiply, divide, power, sqrt, percentage
+- Calculator: standard math: add, subtract, multiply, divide, power, sqrt, percentage. Always available when tools are enabled.
+- Current time: local machine date/time or specific IANA timezones. Always available when tools are enabled.
+- Weather: current weather and short forecasts with Open-Meteo. Always available when tools are enabled, no API key required.
+- Stock price: current stock prices and market data. Requires Alpha Vantage API key.
+- Web search: Brave Search queries returning titles, URLs, snippets, and dates. Requires Brave API key.
+- Fetch URL: grabs HTTP/HTTPS URLs and returns readable text. Private and local network addresses are rejected.
 
-**Example prompts:**
-- "What is 15% of 250?"
-- "Calculate the square root of 144"
-- "What's 2 to the power of 10?"
+#### Local Workspace
 
-#### Current Time
-Returns the current date and time for the local machine or a requested IANA timezone. Always available when tools are enabled.
+Workspace tools only operate under configured `workspace_roots`.
 
-**Example prompts:**
-- "What time is it?"
-- "What is the current date in UTC?"
-- "What time is it in America/New_York?"
+- Local files: `list_files`, `search_files`, `read_file`, `create_file`.
+- Read-only command: runs a tight allowlist of read-only commands such as `pwd`, `ls`, `find`, `rg`, `cat`, `git status`, `git diff`, `git log`, `git show`, `go test`, and `npm test`. Commands are passed safely as args, never as raw shell strings.
+- SQLite query: executes read-only queries against local database files. Allowed SQL starts with `SELECT`, `WITH`, `EXPLAIN`, or `PRAGMA table_info`.
+- Local memory: encrypted local memory storage with `remember`, `recall`, `list_memories`, and `forget`.
 
-#### Weather
-Fetches current weather and short forecasts with Open-Meteo. Always available when tools are enabled and does not require an API key.
-
-**Example prompts:**
-- "What's the weather in Philadelphia?"
-- "Get a 3 day forecast for Boston, MA"
-- "What's the weather in Berlin in celsius?"
-
-#### Stock Price
-Fetches current stock prices and market data. Requires Alpha Vantage API key.
-
-**Example prompts:**
-- "What's the current price of IBM stock?"
-- "Get me the latest stock info for AAPL"
-- "How is Microsoft (MSFT) doing today?"
-
-#### Web Search
-Searches the web with Brave Search and returns top result titles, URLs, snippets, and dates when available. Requires Brave API key.
-
-**Example prompts:**
-- "Search the web for the latest Go release notes"
-- "Find current information about Bubble Tea tool calling examples"
-- "Look up recent news about local AI models"
-
-#### Fetch URL
-Fetches an HTTP or HTTPS URL and returns readable text. Private and local network addresses are rejected.
-
-**Example prompts:**
-- "Fetch this documentation page and summarize it: https://example.com/docs"
-- "Read the first article from those search results"
-
-#### Local Files
-Read-only file tools work only under configured `workspace_roots`.
-
-**Tools:** `list_files`, `search_files`, `read_file`, `create_file`
-
-**Example prompts:**
-- "Search my notes for MCP"
-- "Read README.md in this repo"
-- "List Go files under the TUI package"
-- "Write that answer to answer.md"
-
-`create_file` only creates new text files under `workspace_roots`; it refuses to overwrite existing files.
-
-#### Read-Only Command
-Runs allowlisted read-only commands under configured `workspace_roots`. Commands are passed as command plus args, not shell strings.
-
-**Allowlisted examples:** `pwd`, `ls`, `find`, `rg`, `cat`, `git status`, `git diff`, `git log`, `git show`, `go test`, `npm test`
-
-#### SQLite Query
-Runs read-only SQLite queries against database files under configured `workspace_roots`.
-
-**Allowed SQL:** `SELECT`, `WITH`, `EXPLAIN`, and `PRAGMA table_info`
-
-#### Local Memory
-Stores explicit encrypted local memories in WeazlChat's database.
-
-**Tools:** `remember`, `recall`, `list_memories`, `forget`
+`create_file` only creates new text files under `workspace_roots`; it flat out refuses to overwrite existing files.
 
 ### How It Works
 
-1. When you ask a question that requires a tool, the AI model will automatically call the appropriate tool
-2. Tool payloads stay hidden from the chat transcript
-3. The tool result is fed back to the model, which then provides a natural language response
-4. All tool calls and results are encrypted and stored in your local database
+1. You ask a question that requires a tool, and the AI model automatically calls the right function.
+2. Tool payloads stay hidden from the main chat transcript.
+3. The result is fed back to the model to synthesize a natural language response.
+4. Calls, results, history, and memories are stored in your local SQLite vault.
 
 ### Model Requirements
 
-**vLLM:** Your model must support function calling (e.g., models fine-tuned for tool use)
-
-**Ollama:** Use models with native tool support like:
-- `llama3.1` (8B, 70B, 405B)
-- `mistral-nemo`
-- `qwen2.5`
+- vLLM: the loaded model must support function calling, such as models fine-tuned for tool use.
+- Ollama: you need a model with native tool support. Good starting points include `llama3.1`, `mistral-nemo`, and `qwen2.5`.
 
 ### Security
 
-- **Safe tools** execute automatically and are designed to be read-only, create-only text file writes, or explicitly local memory operations
-- File, shell, and SQLite tools are confined to configured `workspace_roots`
-- `create_file` refuses overwrites
-- Shell commands are allowlisted and do not execute through a shell
-- URL fetch rejects private and local network addresses
-- Tool output is truncated before it is sent back to the model
-- Tool execution happens locally in the WeazlChat process
-- API keys are stored in your local config file (not shared)
-- Chat history, tool interactions, and memories are encrypted in your local database
+We take local privacy seriously, but this is still a small local app, not a hardware security module. Your vault is only as good as the password you choose. The bcrypt password check and encrypted payloads are there to keep casual prying eyes out; they are not a promise that a weak password will survive a determined offline attack against your database.
+
+- Safe tools are strictly read-only, create-only for text files, or explicit local memory operations.
+- File, shell, and SQLite tools are boxed into configured `workspace_roots`.
+- `create_file` will never overwrite existing files.
+- Shell commands are allowlisted and do not execute through an actual shell.
+- URL fetching actively blocks private and local network IP addresses.
+- Tool output is truncated before returning to the model to prevent massive context floods.
+- Tool execution happens locally inside the WeazlChat process.
+- API keys live in your local config file and are never shared by WeazlChat.
+- Chat history, tool interactions, and memories are encrypted in your local database.
 
 ### Example Config
 
-See `config.example.json` for a complete configuration example with tools enabled.
+Check out `config.example.json` for a complete configuration template with tools enabled.

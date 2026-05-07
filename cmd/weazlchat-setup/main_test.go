@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -33,6 +34,44 @@ func TestConfigureToolsKeepsExistingKeysOnBlank(t *testing.T) {
 	}
 	if !got.Tools.Enabled {
 		t.Fatal("Tools.Enabled = false, want true")
+	}
+}
+
+func TestAskContextWindowPresets(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  int
+	}{
+		{name: "blank defaults large", input: "\n", want: 32768},
+		{name: "small name", input: "small\n", want: 8192},
+		{name: "medium number", input: "2\n", want: 16384},
+		{name: "xl name", input: "xl\n", want: 128000},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := bufio.NewReader(strings.NewReader(tt.input))
+			if got := askContextWindow(reader); got != tt.want {
+				t.Fatalf("askContextWindow() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWriteConfigStoresContextWindow(t *testing.T) {
+	cfg := config.Default()
+	cfg.Database.Path = filepath.Join(t.TempDir(), "weazlchat.sqlite3")
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+
+	if err := writeConfig(cfgPath, cfg, "vllm", "http://localhost:8000", "model", 16384); err != nil {
+		t.Fatalf("writeConfig: %v", err)
+	}
+	got, err := config.LoadPath(cfgPath)
+	if err != nil {
+		t.Fatalf("LoadPath: %v", err)
+	}
+	if got.Active().ContextWindow != 16384 {
+		t.Fatalf("ContextWindow = %d, want 16384", got.Active().ContextWindow)
 	}
 }
 
