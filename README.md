@@ -224,3 +224,9 @@ We take local privacy seriously, but this is still a small local app, not a hard
 ### Example Config
 
 Check out `config.example.json` for a complete configuration template with tools enabled.
+
+## License And Branding
+
+WeazlChat is released under the MIT License. Use it, fork it, ship it, learn from it.
+
+The `WeazlChat` name, screenshot, and project branding are part of this project identity. If you publish a substantially modified fork, please use a different name and visual branding so users can tell the projects apart.
