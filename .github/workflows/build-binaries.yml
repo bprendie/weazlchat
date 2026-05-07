@@ -1,0 +1,80 @@
+name: Build distributable binaries
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-amd64:
+    name: Windows x64
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up MSYS2 UCRT64 toolchain
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          path-type: inherit
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+
+      - name: Build weazlchat.exe
+        shell: pwsh
+        env:
+          CGO_ENABLED: "1"
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          $env:Path = "C:\msys64\ucrt64\bin;$env:Path"
+          $env:CC = "gcc"
+          go build -buildvcs=false -trimpath -ldflags="-s -w" -o dist/weazlchat_windows_x64.exe ./cmd/weazlchat
+
+      - name: Upload Windows binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: weazlchat_windows_x64
+          path: dist/weazlchat_windows_x64.exe
+          if-no-files-found: error
+
+  macos-arm64:
+    name: macOS arm64
+    runs-on: macos-15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build weazlchat
+        env:
+          CGO_ENABLED: "1"
+          GOOS: darwin
+          GOARCH: arm64
+        run: |
+          mkdir -p dist
+          go build -buildvcs=false -trimpath -ldflags="-s -w" -o dist/weazlchat_macos_arm64 ./cmd/weazlchat
+
+      - name: Upload macOS binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: weazlchat_macos_arm64
+          path: dist/weazlchat_macos_arm64
+          if-no-files-found: error
