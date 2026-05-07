@@ -25,11 +25,14 @@ func (i sessionItem) FilterValue() string { return i.session.Title }
 
 type workspaceItem storage.WorkspaceSave
 
-func (i workspaceItem) Title() string { return storage.WorkspaceSave(i).Name }
-func (i workspaceItem) Description() string {
-	return storage.WorkspaceSave(i).CreatedAt.Format("2006-01-02 15:04")
+func (i workspaceItem) Title() string {
+	save := storage.WorkspaceSave(i)
+	return fmt.Sprintf("%s: %s", workspaceLabel(save.Name), workspaceTime(save.CreatedAt))
 }
-func (i workspaceItem) FilterValue() string { return storage.WorkspaceSave(i).Name }
+func (i workspaceItem) Description() string {
+	return storage.WorkspaceSave(i).SessionID
+}
+func (i workspaceItem) FilterValue() string { return workspaceLabel(storage.WorkspaceSave(i).Name) }
 
 type previousSessionMsg struct {
 	session       storage.Session
@@ -232,7 +235,7 @@ func (m *model) saveWorkspace() {
 		return
 	}
 	now := time.Now()
-	name := workspaceName(now, m.session.Title)
+	name := workspaceName(m.session.Title)
 	id, err := m.store.SaveWorkspace(name, m.session.ID, m.viewport.View(), throughID)
 	if err != nil {
 		m.err = err.Error()
@@ -254,7 +257,6 @@ func (m model) startRenameWorkspace() (tea.Model, tea.Cmd) {
 	m.renameWorkspaceID = save.ID
 	m.renameReturnMode = returnMode
 	m.renameDraft = m.input.Value()
-	m.renamePrefix = workspacePrefix(save.CreatedAt)
 	m.input.SetValue(workspaceLabel(save.Name))
 	m.input.CursorEnd()
 	m.input.Placeholder = "workspace name"
@@ -296,7 +298,7 @@ func (m model) finishRenameWorkspace() (tea.Model, tea.Cmd) {
 		m.err = "workspace name is required"
 		return m, nil
 	}
-	name := m.renamePrefix + label
+	name := label
 	if err := m.store.RenameWorkspace(m.renameWorkspaceID, name); err != nil {
 		m.err = err.Error()
 		return m, nil
@@ -304,7 +306,6 @@ func (m model) finishRenameWorkspace() (tea.Model, tea.Cmd) {
 	renamedID := m.renameWorkspaceID
 	returnMode := m.renameReturnMode
 	m.renameWorkspaceID = 0
-	m.renamePrefix = ""
 	m.input.SetValue(m.renameDraft)
 	m.input.CursorEnd()
 	m.renameDraft = ""
@@ -328,7 +329,6 @@ func (m model) finishRenameWorkspace() (tea.Model, tea.Cmd) {
 func (m model) cancelRenameWorkspace() (tea.Model, tea.Cmd) {
 	returnMode := m.renameReturnMode
 	m.renameWorkspaceID = 0
-	m.renamePrefix = ""
 	m.input.SetValue(m.renameDraft)
 	m.input.CursorEnd()
 	m.renameDraft = ""
@@ -342,24 +342,25 @@ func (m model) cancelRenameWorkspace() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func workspaceName(t time.Time, label string) string {
+func workspaceLabel(name string) string {
+	name = strings.Join(strings.Fields(name), " ")
+	if idx := strings.Index(name, ": "); idx >= len("2006-01-02 15:04:05") {
+		name = strings.TrimSpace(name[idx+1:])
+	}
+	return name
+}
+
+func workspaceTime(t time.Time) string {
+	if t.IsZero() {
+		return "unknown time"
+	}
+	return t.Format("2006-01-02 15:04:05")
+}
+
+func workspaceName(label string) string {
 	label = strings.Join(strings.Fields(label), " ")
 	if label == "" {
 		label = "workspace"
 	}
-	return workspacePrefix(t) + label
-}
-
-func workspacePrefix(t time.Time) string {
-	if t.IsZero() {
-		t = time.Now()
-	}
-	return t.Format("2006-01-02 15:04:05") + ": "
-}
-
-func workspaceLabel(name string) string {
-	if idx := strings.Index(name, ": "); idx >= len("2006-01-02 15:04:05") {
-		return name[idx+2:]
-	}
-	return name
+	return label
 }

@@ -53,7 +53,6 @@ type model struct {
 	renameWorkspaceID   int64
 	renameReturnMode    mode
 	renameDraft         string
-	renamePrefix        string
 	session             storage.Session
 	messages            []storage.Message
 	checkpoint          storage.ContextCheckpoint

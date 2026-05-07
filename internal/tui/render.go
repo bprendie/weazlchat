@@ -52,7 +52,7 @@ func (m model) renameWorkspaceView() string {
 	w := max(20, m.width-6)
 	h := max(5, m.height-16)
 	popupWidth := min(64, max(32, w-8))
-	prompt := m.styles.help.Render("saved as " + m.renamePrefix + "<name>")
+	prompt := m.styles.help.Render("shown in picker as <name>: timestamp")
 	popup := lipgloss.NewStyle().
 		Width(popupWidth).
 		Border(lipgloss.RoundedBorder()).
