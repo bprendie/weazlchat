@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func (s *Store) SaveWorkspace(name, sessionID, snapshot string) error {
+func (s *Store) SaveWorkspace(name, sessionID, snapshot string, throughMessageID int64) error {
 	if !s.unlocked {
 		return errors.New("database is locked")
 	}
@@ -14,12 +14,15 @@ func (s *Store) SaveWorkspace(name, sessionID, snapshot string) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(`insert into workspace_saves (name, session_id, snapshot) values (?, ?, ?)`, name, sessionID, blob)
+	_, err = s.db.Exec(
+		`insert into workspace_saves (name, session_id, snapshot, through_message_id) values (?, ?, ?, ?)`,
+		name, sessionID, blob, throughMessageID,
+	)
 	return err
 }
 
 func (s *Store) WorkspaceSaves(limit int) ([]WorkspaceSave, error) {
-	rows, err := s.db.Query(`select id, name, session_id, created_at from workspace_saves order by created_at desc limit ?`, limit)
+	rows, err := s.db.Query(`select id, name, session_id, through_message_id, created_at from workspace_saves order by created_at desc limit ?`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +30,7 @@ func (s *Store) WorkspaceSaves(limit int) ([]WorkspaceSave, error) {
 	var saves []WorkspaceSave
 	for rows.Next() {
 		var save WorkspaceSave
-		if err := rows.Scan(&save.ID, &save.Name, &save.SessionID, &save.CreatedAt); err != nil {
+		if err := rows.Scan(&save.ID, &save.Name, &save.SessionID, &save.ThroughMessageID, &save.CreatedAt); err != nil {
 			return nil, err
 		}
 		saves = append(saves, save)

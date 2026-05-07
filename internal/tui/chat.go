@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/bprendie/weazlchat/internal/config"
+	"github.com/bprendie/weazlchat/internal/storage"
 )
 
 func (m model) handleEnter() (tea.Model, tea.Cmd) {
@@ -56,6 +57,11 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		item, ok := m.sessions.SelectedItem().(sessionItem)
 		if ok {
 			return m.loadSession(item.session)
+		}
+	case modeWorkspace:
+		item, ok := m.workspaces.SelectedItem().(workspaceItem)
+		if ok {
+			return m.loadWorkspace(storage.WorkspaceSave(item))
 		}
 	case modeChat:
 		if m.thinking {

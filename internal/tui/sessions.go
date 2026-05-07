@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
 
@@ -29,15 +30,55 @@ func (i workspaceItem) Description() string {
 }
 func (i workspaceItem) FilterValue() string { return storage.WorkspaceSave(i).Name }
 
+type previousSessionMsg struct {
+	session       storage.Session
+	messages      []storage.Message
+	checkpoint    storage.ContextCheckpoint
+	hasCheckpoint bool
+	rendered      string
+	renderWidth   int
+	err           error
+}
+
 func (m model) startChat() (tea.Model, tea.Cmd) {
 	if m.cfg.UI.ResumeLastSession {
-		if sess, ok, err := m.store.LatestSession(); err != nil {
-			m.err = err.Error()
-		} else if ok {
-			return m.loadSession(sess)
-		}
+		m.mode = modeLoading
+		m.status = "loading previous session"
+		m.working.Spinner = spinner.Jump
+		return m, tea.Batch(m.loadPreviousSession(), m.working.Tick)
 	}
 	return m.newSession()
+}
+
+func (m model) loadPreviousSession() tea.Cmd {
+	renderer := m
+	renderer.markdown.term = nil
+	return func() tea.Msg {
+		sess, ok, err := m.store.LatestSession()
+		if err != nil || !ok {
+			return previousSessionMsg{err: err}
+		}
+		msgs, err := m.store.Messages(sess.ID)
+		if err != nil {
+			return previousSessionMsg{err: err}
+		}
+		cp, hasCheckpoint, err := m.store.LatestContextCheckpoint(sess.ID)
+		if err != nil {
+			return previousSessionMsg{err: err}
+		}
+		rendered := ""
+		if renderer.viewport.Width > 0 {
+			rendered = renderer.renderTranscript(msgs)
+		}
+		return previousSessionMsg{
+			session:       sess,
+			messages:      msgs,
+			checkpoint:    cp,
+			hasCheckpoint: hasCheckpoint,
+			rendered:      rendered,
+			renderWidth:   renderer.viewport.Width,
+		}
+	}
 }
 
 func (m model) newSession() (tea.Model, tea.Cmd) {
@@ -136,9 +177,43 @@ func (m model) showWorkspaces() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m model) loadWorkspace(save storage.WorkspaceSave) (tea.Model, tea.Cmd) {
+	sess, ok, err := m.store.Session(save.SessionID)
+	if err != nil {
+		m.err = err.Error()
+		return m, nil
+	}
+	if !ok {
+		m.err = "workspace session not found"
+		return m, nil
+	}
+	m.session = sess
+	if save.ThroughMessageID > 0 {
+		m.messages, err = m.store.MessagesThrough(save.SessionID, save.ThroughMessageID)
+	} else {
+		m.messages, err = m.store.Messages(save.SessionID)
+	}
+	if err != nil {
+		m.err = err.Error()
+		return m, nil
+	}
+	m.refreshCheckpoint()
+	m.historyIdx = 0
+	m.historyDraft = ""
+	m.mode = modeChat
+	m.input.Focus()
+	m.renderMessages()
+	m.status = "workspace replay " + save.Name
+	return m, nil
+}
+
 func (m *model) saveWorkspace() {
 	name := fmt.Sprintf("%s @ %s", m.session.Title, time.Now().Format("15:04:05"))
-	if err := m.store.SaveWorkspace(name, m.session.ID, m.viewport.View()); err != nil {
+	throughID := int64(0)
+	if len(m.messages) > 0 {
+		throughID = m.messages[len(m.messages)-1].ID
+	}
+	if err := m.store.SaveWorkspace(name, m.session.ID, m.viewport.View(), throughID); err != nil {
 		m.err = err.Error()
 		return
 	}

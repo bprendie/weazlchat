@@ -23,6 +23,8 @@ func (m model) View() string {
 	case modeServer:
 		p := m.cfg.Active()
 		body = m.styles.panel.Render(fmt.Sprintf("Server URL for %s / %s\n\n%s", p.Type, p.Model, m.input.View()))
+	case modeLoading:
+		body = m.styles.panel.Render(fmt.Sprintf("%s loading previous session", m.working.View()))
 	case modeSessions:
 		body = m.sessions.View()
 	case modeWorkspace:
@@ -41,31 +43,7 @@ func (m model) View() string {
 // renderMessages updates the viewport with the current message history and streaming state
 func (m *model) renderMessages() {
 	var b strings.Builder
-	if len(m.messages) == 0 {
-		b.WriteString(m.styles.system.Render("W34Zl Ch4T is ready. Local providers only."))
-		if m.cfg.Tools.Enabled {
-			b.WriteString("\n")
-			b.WriteString(m.styles.system.Render("Tools enabled: " + strings.Join(m.getToolNames(), ", ")))
-		}
-	} else {
-		for _, msg := range m.messages {
-			if msg.Role == "tool" {
-				continue
-			}
-
-			label := m.styles.user.Render("you")
-			if msg.Role == "assistant" {
-				label = m.styles.assistant.Render("ai")
-			}
-			b.WriteString(label)
-			b.WriteString("\n")
-
-			if msg.Content != "" {
-				b.WriteString(wrapText(msg.Content, m.viewport.Width))
-			}
-			b.WriteString("\n\n")
-		}
-	}
+	b.WriteString(m.renderTranscript(m.messages))
 	if m.thinking {
 		b.WriteString(m.styles.assistant.Render("ai"))
 		b.WriteString("\n")
@@ -82,6 +60,36 @@ func (m *model) renderMessages() {
 	}
 	m.viewport.SetContent(b.String())
 	m.viewport.GotoBottom()
+}
+
+func (m *model) renderTranscript(messages []storage.Message) string {
+	var b strings.Builder
+	if len(messages) == 0 {
+		b.WriteString(m.styles.system.Render("W34Zl Ch4T is ready. Local providers only."))
+		if m.cfg.Tools.Enabled {
+			b.WriteString("\n")
+			b.WriteString(m.styles.system.Render("Tools enabled: " + strings.Join(m.getToolNames(), ", ")))
+		}
+	} else {
+		for _, msg := range messages {
+			if msg.Role == "tool" {
+				continue
+			}
+
+			label := m.styles.user.Render("you")
+			if msg.Role == "assistant" {
+				label = m.styles.assistant.Render("ai")
+			}
+			b.WriteString(label)
+			b.WriteString("\n")
+
+			if msg.Content != "" {
+				b.WriteString(m.renderContent(msg.Role, msg.Content))
+			}
+			b.WriteString("\n\n")
+		}
+	}
+	return b.String()
 }
 
 // getToolNames returns a list of registered tool names
@@ -140,6 +148,9 @@ func (m model) metricsView() string {
 
 // helpText returns context-appropriate help text for the current mode
 func (m model) helpText() string {
+	if m.mode == modeLoading {
+		return "loading previous session | ctrl+c quit"
+	}
 	if m.mode == modeSessions {
 		return "enter resume | ctrl+d delete session | esc back | ctrl+c quit"
 	}
@@ -177,6 +188,14 @@ func (m *model) resize() {
 	m.sessions.SetSize(w, h+4)
 	m.workspaces.SetSize(w, h+4)
 	m.contextBar.Width = min(28, max(10, w/4))
+	m.markdown.Resize(w)
+}
+
+func (m *model) renderContent(role, content string) string {
+	if role == "assistant" {
+		return m.markdown.Render(content, m.viewport.Width)
+	}
+	return wrapText(content, m.viewport.Width)
 }
 
 // ansiHeader returns the ASCII art header

@@ -30,7 +30,9 @@ type Database struct {
 }
 
 type UI struct {
-	ResumeLastSession bool `json:"resume_last_session"`
+	ResumeLastSession bool   `json:"resume_last_session"`
+	RenderMarkdown    *bool  `json:"render_markdown,omitempty"`
+	MarkdownStyle     string `json:"markdown_style,omitempty"`
 }
 
 type Tools struct {
@@ -103,7 +105,11 @@ func Default() Config {
 			},
 		},
 		Database: Database{Path: filepath.Join(dataDir, "weazlchat.sqlite3")},
-		UI:       UI{ResumeLastSession: true},
+		UI: UI{
+			ResumeLastSession: true,
+			RenderMarkdown:    boolPtr(true),
+			MarkdownStyle:     "dark",
+		},
 		Tools: Tools{
 			Enabled:        false,
 			AutoExecute:    true,
@@ -141,12 +147,26 @@ func (c *Config) withDefaults() {
 	if c.Database.Path == "" {
 		c.Database.Path = def.Database.Path
 	}
+	if c.UI.RenderMarkdown == nil {
+		c.UI.RenderMarkdown = def.UI.RenderMarkdown
+	}
+	if c.UI.MarkdownStyle == "" {
+		c.UI.MarkdownStyle = def.UI.MarkdownStyle
+	}
 	if c.Tools.MaxOutputChars <= 0 {
 		c.Tools.MaxOutputChars = def.Tools.MaxOutputChars
 	}
 	if c.Tools.MaxFileBytes <= 0 {
 		c.Tools.MaxFileBytes = def.Tools.MaxFileBytes
 	}
+}
+
+func (ui UI) MarkdownEnabled() bool {
+	return ui.RenderMarkdown == nil || *ui.RenderMarkdown
+}
+
+func boolPtr(v bool) *bool {
+	return &v
 }
 
 func configPath() string {

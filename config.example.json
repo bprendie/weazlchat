@@ -18,7 +18,9 @@
     "path": "/home/user/.local/share/weazlchat/weazlchat.sqlite3"
   },
   "ui": {
-    "resume_last_session": true
+    "resume_last_session": true,
+    "render_markdown": true,
+    "markdown_style": "dark"
   },
   "tools": {
     "enabled": true,

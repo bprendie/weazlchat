@@ -46,6 +46,8 @@ The installer also asks for a context window preset:
 
 Finally, the first run asks you to set a local history password. Session history and workspace saves are stored in SQLite with a password-protected vault and AES-GCM encrypted payloads.
 
+Markdown rendering is enabled by default with Charmbracelet Glamour, so model output keeps its terminal-native shape: headings, lists, code blocks, links, quotes, and tables all get a little polish without turning the app into a browser.
+
 ## Build From Source
 
 WeazlChat is a Go app, but it uses SQLite through `go-sqlite3`, so builds need CGO and a working C compiler. That is the one little bit of yak hair.
@@ -129,6 +131,22 @@ If you forget, WeazlChat has your back. It automatically trims context when the 
 While you wait for inference, WeazlChat uses Bubble spinner animations with rotating status phrases such as `hacking_the_gibson`, `jacking_into_the_matrix`, `wheezing_the_juice`, and `chilling_the_tokens`. The phrases favor active `-ing` wording, stay stable for short responses, and swap just a couple of times during longer generations to keep the screen quiet.
 
 Tool calls stay neatly tucked away in the transcript as `🔧 using tools`. When WeazlChat is summarizing older history into a checkpoint, it uses a distinct compaction animation so you know it is trimming context rather than hanging on a standard response.
+
+Assistant responses are rendered with Glamour-powered Markdown once they land in the transcript, including when you resume a session or replay a saved workspace. Streaming text stays simple while it is still arriving, then gets cleaned up after the response is saved.
+
+You can tune or disable Markdown rendering in `~/.config/weazlchat/config.json`:
+
+```json
+{
+  "ui": {
+    "resume_last_session": true,
+    "render_markdown": true,
+    "markdown_style": "dark"
+  }
+}
+```
+
+`markdown_style` accepts Glamour standard style names. WeazlChat defaults to `dark`; `auto` is treated as `dark` to avoid terminal color-query responses leaking into the input box in some terminals.
 
 ## Scrolling And Copy/Paste
 

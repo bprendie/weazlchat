@@ -73,6 +73,18 @@ func (s *Store) MessagesAfter(sessionID string, afterID int64) ([]Message, error
 	return s.scanMessages(rows)
 }
 
+func (s *Store) MessagesThrough(sessionID string, throughID int64) ([]Message, error) {
+	if !s.unlocked {
+		return nil, errors.New("database is locked")
+	}
+	rows, err := s.db.Query(`select id, session_id, role, content, tool_calls, tool_call_id, created_at from messages where session_id = ? and id <= ? order by id`, sessionID, throughID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return s.scanMessages(rows)
+}
+
 func (s *Store) SaveContextCheckpoint(sessionID string, throughMessageID int64, summary string) error {
 	if !s.unlocked {
 		return errors.New("database is locked")

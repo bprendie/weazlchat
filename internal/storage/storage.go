@@ -46,10 +46,11 @@ type Message struct {
 }
 
 type WorkspaceSave struct {
-	ID        int64
-	Name      string
-	SessionID string
-	CreatedAt time.Time
+	ID               int64
+	Name             string
+	SessionID        string
+	ThroughMessageID int64
+	CreatedAt        time.Time
 }
 
 type Memory struct {
@@ -150,6 +151,9 @@ func (s *Store) Migrate() error {
 	if err := s.ensureColumn("messages", "tool_call_id", "text"); err != nil {
 		return err
 	}
+	if err := s.ensureColumn("workspace_saves", "through_message_id", "integer not null default 0"); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -243,6 +247,19 @@ func (s *Store) ListSessions(limit int) ([]Session, error) {
 		sessions = append(sessions, sess)
 	}
 	return sessions, rows.Err()
+}
+
+func (s *Store) Session(id string) (Session, bool, error) {
+	rows, err := s.db.Query(`select id, title, provider, model, input_tokens, output_tokens, created_at, updated_at from sessions where id = ?`, id)
+	if err != nil {
+		return Session{}, false, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return Session{}, false, rows.Err()
+	}
+	sess, err := scanSession(rows)
+	return sess, err == nil, err
 }
 
 func (s *Store) DeleteSession(id string) error {

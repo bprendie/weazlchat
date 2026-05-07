@@ -24,6 +24,7 @@ type mode int
 const (
 	modeVault mode = iota
 	modeServer
+	modeLoading
 	modeChat
 	modeSessions
 	modeWorkspace
@@ -40,6 +41,7 @@ type model struct {
 	height        int
 	input         textinput.Model
 	viewport      viewport.Model
+	markdown      markdownRenderer
 	sessions      list.Model
 	workspaces    list.Model
 	working       spinner.Model
@@ -73,49 +75,6 @@ type streamEvent struct {
 	usage     llm.Usage
 	err       error
 	done      bool
-}
-
-var contextTrimSpinner = spinner.Spinner{
-	Frames: []string{
-		"▰▱▱▱",
-		"▰▰▱▱",
-		"▰▰▰▱",
-		"▰▰▰▰",
-		"▱▰▰▰",
-		"▱▱▰▰",
-		"▱▱▱▰",
-		"▱▱▱▱",
-	},
-	FPS: time.Second / 12,
-}
-
-var modelThinkingPhrases = []string{
-	"hacking_the_gibson",
-	"jacking_into_the_matrix",
-	"breaching_corporate_ice",
-	"overclocking_neural_link",
-	"tracing_the_uplink",
-	"decrypting_sector_7",
-	"sniffing_data_packets",
-	"bypassing_firewall_01",
-	"rerouting_the_mainframe",
-	"uploading_virus_payload",
-	"accessing_black_ice",
-	"mapping_the_grid",
-	"ghosting_the_network",
-	"prying_open_the_vault",
-	"optimizing_cyberdeck",
-	"draining_the_data_well",
-	"spoofing_host_protocol",
-	"syncing_with_the_construct",
-	"scrambling_bio_signals",
-	"system_reboot_imminent",
-	"buuu_ddy",
-	"wheezing_the_juice",
-	"munching_the_grindage",
-	"chilling_the_tokens",
-	"chilling_up_on_here",
-	"taxing_the_gig",
 }
 
 type contextTrimMsg struct {
@@ -155,6 +114,7 @@ func New(cfg config.Config, cfgPath string, store *storage.Store, toolRegistry *
 		mode:         modeVault,
 		input:        ti,
 		viewport:     viewport.New(0, 0),
+		markdown:     markdownRenderer{enabled: cfg.UI.MarkdownEnabled(), style: cfg.UI.MarkdownStyle},
 		sessions:     sessions,
 		workspaces:   workspaces,
 		working:      working,
@@ -185,6 +145,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.resize()
+		if m.mode == modeChat && !m.thinking {
+			m.renderMessages()
+		}
 	case tea.MouseMsg:
 		if m.mode == modeChat {
 			var cmd tea.Cmd
@@ -350,11 +313,38 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = fmt.Sprintf("context trimmed through message %d", msg.throughID)
 		m.renderMessages()
 		return m, nil
+	case previousSessionMsg:
+		m.thinking = false
+		if msg.err != nil {
+			m.err = msg.err.Error()
+			return m.newSession()
+		}
+		if msg.session.ID == "" {
+			return m.newSession()
+		}
+		m.session = msg.session
+		m.messages = msg.messages
+		m.checkpoint = msg.checkpoint
+		m.hasCheckpoint = msg.hasCheckpoint
+		m.historyIdx = 0
+		m.historyDraft = ""
+		m.mode = modeChat
+		m.status = "resumed " + msg.session.Title
+		m.input.Focus()
+		if msg.rendered != "" && msg.renderWidth == m.viewport.Width {
+			m.viewport.SetContent(msg.rendered)
+			m.viewport.GotoBottom()
+		} else {
+			m.renderMessages()
+		}
+		return m, tea.ClearScreen
 	case spinner.TickMsg:
-		if m.thinking {
+		if m.thinking || m.mode == modeLoading {
 			var cmd tea.Cmd
 			m.working, cmd = m.working.Update(msg)
-			m.renderMessages()
+			if m.thinking {
+				m.renderMessages()
+			}
 			return m, cmd
 		}
 	}
