@@ -183,7 +183,7 @@ func (m model) helpText() string {
 	if m.activeWorkspaceID != 0 {
 		renameHelp = " | ctrl+e rename"
 	}
-	return "enter send/select | wheel/pgup/pgdn scroll | " + mouseHelp + " | ctrl+t trim | ctrl+r workspaces | ctrl+s save" + renameHelp + " | ctrl+c quit"
+	return "enter send/select | wheel/pgup/pgdn scroll | " + mouseHelp + " | ctrl+n new | ctrl+t trim | ctrl+r workspaces | ctrl+s save" + renameHelp + " | ctrl+c quit"
 }
 
 // inputView returns the input field view with paste indicator if applicable
