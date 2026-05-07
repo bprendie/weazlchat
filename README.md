@@ -46,6 +46,57 @@ The installer also asks for a context window preset:
 
 Finally, the first run asks you to set a local history password. Session history and workspace saves are stored in SQLite with a password-protected vault and AES-GCM encrypted payloads.
 
+## Build From Source
+
+WeazlChat is a Go app, but it uses SQLite through `go-sqlite3`, so builds need CGO and a working C compiler. That is the one little bit of yak hair.
+
+### macOS
+
+Install Go and the Xcode command line tools:
+
+```sh
+xcode-select --install
+```
+
+Then build:
+
+```sh
+go build -o weazlchat ./cmd/weazlchat
+go build -o weazlchat-setup ./cmd/weazlchat-setup
+```
+
+The install script also works on macOS-style shells:
+
+```sh
+./scripts/install.sh
+```
+
+### Windows
+
+Install Go for Windows, then install a C compiler that Go can use with CGO. MSYS2 works well:
+
+1. Install MSYS2 from https://www.msys2.org/
+2. Open the MSYS2 UCRT64 shell.
+3. Install the compiler:
+
+```sh
+pacman -S --needed mingw-w64-ucrt-x86_64-gcc
+```
+
+Make sure the UCRT64 `bin` directory is on your `PATH`, then build from PowerShell or the MSYS2 shell:
+
+```sh
+go build -o weazlchat.exe ./cmd/weazlchat
+go build -o weazlchat-setup.exe ./cmd/weazlchat-setup
+```
+
+Run setup first if you want the guided config flow:
+
+```sh
+.\weazlchat-setup.exe
+.\weazlchat.exe
+```
+
 ## Keys
 
 - `enter`: send message / select session
