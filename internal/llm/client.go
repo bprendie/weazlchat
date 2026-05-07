@@ -43,6 +43,8 @@ type StreamEvent struct {
 	Error     error      // Error if any
 }
 
+const markdownResponseSystemPrompt = "Format normal responses as Markdown so headings, lists, code blocks, quotes, links, and tables render cleanly in the terminal. If the user explicitly requests a different raw format such as JSON, Python, SQL, CSV, or plain text, honor that requested format exactly."
+
 type Client struct {
 	provider config.Provider
 	http     *http.Client
@@ -100,7 +102,8 @@ func (c Client) Summarize(ctx context.Context, transcript string, targetTokens i
 }
 
 func chatMessages(history []storage.Message, prompt string) []ChatMessage {
-	messages := make([]ChatMessage, 0, len(history)+1)
+	messages := make([]ChatMessage, 0, len(history)+2)
+	messages = append(messages, ChatMessage{Role: "system", Content: markdownResponseSystemPrompt})
 	for _, msg := range history {
 		cm := ChatMessage{Role: msg.Role, Content: msg.Content}
 		// Parse tool calls if present in metadata
@@ -140,7 +143,8 @@ type ollamaToolCall struct {
 }
 
 func ollamaChatMessages(history []storage.Message, prompt string) []ollamaMessage {
-	messages := make([]ollamaMessage, 0, len(history)+1)
+	messages := make([]ollamaMessage, 0, len(history)+2)
+	messages = append(messages, ollamaMessage{Role: "system", Content: markdownResponseSystemPrompt})
 	toolNames := make(map[string]string)
 	for _, msg := range history {
 		cm := ollamaMessage{Role: msg.Role, Content: msg.Content}
