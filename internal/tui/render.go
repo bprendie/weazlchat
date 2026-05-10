@@ -90,6 +90,9 @@ func (m *model) renderTranscript(messages []storage.Message) string {
 			if msg.Role == "tool" {
 				continue
 			}
+			if msg.Role == "assistant" && strings.TrimSpace(msg.Content) == "" {
+				continue
+			}
 
 			label := m.styles.user.Render("you")
 			if msg.Role == "assistant" {
