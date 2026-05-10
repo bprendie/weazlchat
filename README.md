@@ -131,7 +131,7 @@ If you forget, WeazlChat has your back. It automatically trims context when the 
 
 While you wait for inference, WeazlChat uses Bubble spinner animations with rotating status phrases such as `hacking_the_gibson`, `jacking_into_the_matrix`, `wheezing_the_juice`, and `chilling_the_tokens`. The phrases favor active `-ing` wording, stay stable for short responses, and swap just a couple of times during longer generations to keep the screen quiet.
 
-Tool calls stay neatly tucked away in the transcript as `🔧 using tools`. When WeazlChat is summarizing older history into a checkpoint, it uses a distinct compaction animation so you know it is trimming context rather than hanging on a standard response.
+Tool calls stay neatly tucked away in the transcript as `🔧 using tools`. WeazlChat keeps the raw tool-call bookkeeping in encrypted history so the model can continue correctly, but hides empty assistant/tool scaffolding from the visible chat. When WeazlChat is summarizing older history into a checkpoint, it uses a distinct compaction animation so you know it is trimming context rather than hanging on a standard response.
 
 Assistant responses are rendered with Glamour-powered Markdown once they land in the transcript, including when you resume a session or replay a saved workspace. Streaming text stays simple while it is still arriving, then gets cleaned up after the response is saved.
 
@@ -203,6 +203,7 @@ Configuration options:
 - Calculator: standard math: add, subtract, multiply, divide, power, sqrt, percentage. Always available when tools are enabled.
 - Current time: local machine date/time or specific IANA timezones. Always available when tools are enabled.
 - Weather: current weather and short forecasts with Open-Meteo. Always available when tools are enabled, no API key required.
+- Markdown checker: renders supplied Markdown with Glamour and returns a short pass/fail preview. Always available when tools are enabled.
 - Stock price: current stock prices and market data. Requires Alpha Vantage API key.
 - Web search: Brave Search queries returning titles, URLs, snippets, and dates. Requires Brave API key.
 - Fetch URL: grabs HTTP/HTTPS URLs and returns readable text. Private and local network addresses are rejected.
