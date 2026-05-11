@@ -46,9 +46,10 @@ type StreamEvent struct {
 const markdownResponseSystemPrompt = "Format normal responses as Markdown so headings, lists, code blocks, quotes, links, and tables render cleanly in the terminal. If the user explicitly requests a different raw format such as JSON, Python, SQL, CSV, or plain text, honor that requested format exactly."
 
 type Client struct {
-	provider config.Provider
-	http     *http.Client
-	tools    []map[string]any
+	provider   config.Provider
+	http       *http.Client
+	tools      []map[string]any
+	toolChoice any
 }
 
 func New(provider config.Provider) Client {
@@ -61,6 +62,20 @@ func New(provider config.Provider) Client {
 // WithTools adds tool definitions to the client
 func (c Client) WithTools(tools []map[string]any) Client {
 	c.tools = tools
+	return c
+}
+
+func (c Client) WithToolChoice(toolName string) Client {
+	toolName = strings.TrimSpace(toolName)
+	if toolName == "" {
+		return c
+	}
+	c.toolChoice = map[string]any{
+		"type": "function",
+		"function": map[string]any{
+			"name": toolName,
+		},
+	}
 	return c
 }
 
@@ -196,7 +211,11 @@ func (c Client) streamOpenAICompat(ctx context.Context, messages []ChatMessage, 
 	// Add tools if available
 	if len(c.tools) > 0 {
 		reqBody["tools"] = c.tools
-		reqBody["tool_choice"] = "auto"
+		if c.toolChoice != nil {
+			reqBody["tool_choice"] = c.toolChoice
+		} else {
+			reqBody["tool_choice"] = "auto"
+		}
 	}
 
 	resp, err := c.post(ctx, "/v1/chat/completions", reqBody)

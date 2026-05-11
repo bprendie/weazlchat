@@ -22,6 +22,9 @@ func (m model) startStream(ch chan<- streamEvent, prompt string, history []stora
 					toolDefs = m.toolRegistry.ToOllamaFormat()
 				}
 				client = client.WithTools(toolDefs)
+				if forcedTool := forcedToolForPrompt(prompt, m.toolRegistry); forcedTool != "" {
+					client = client.WithToolChoice(forcedTool)
+				}
 			}
 
 			usage, err := client.Stream(context.Background(), history, prompt, func(event llm.StreamEvent) {
