@@ -91,5 +91,5 @@ func (m model) executeTools(inputTokens, outputTokens int) (tea.Model, tea.Cmd) 
 	m.stream = ch
 	m.pendingTools = nil
 
-	return m, tea.Batch(m.startStream(ch, "", contextHistory), waitStream(ch), m.working.Tick)
+	return m, tea.Batch(m.startStreamWithoutTools(ch, "", contextHistory), waitStream(ch), m.working.Tick)
 }

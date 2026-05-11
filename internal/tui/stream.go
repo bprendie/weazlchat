@@ -11,12 +11,20 @@ import (
 )
 
 func (m model) startStream(ch chan<- streamEvent, prompt string, history []storage.Message) tea.Cmd {
+	return m.startStreamWithTools(ch, prompt, history, true)
+}
+
+func (m model) startStreamWithoutTools(ch chan<- streamEvent, prompt string, history []storage.Message) tea.Cmd {
+	return m.startStreamWithTools(ch, prompt, history, false)
+}
+
+func (m model) startStreamWithTools(ch chan<- streamEvent, prompt string, history []storage.Message, allowTools bool) tea.Cmd {
 	return func() tea.Msg {
 		go func() {
 			defer close(ch)
 			client := llm.New(m.cfg.Active())
 
-			if m.cfg.Tools.Enabled && m.toolRegistry != nil {
+			if allowTools && m.cfg.Tools.Enabled && m.toolRegistry != nil {
 				toolDefs := m.toolRegistry.ToOpenAIFormat()
 				if strings.ToLower(m.cfg.Active().Type) == "ollama" {
 					toolDefs = m.toolRegistry.ToOllamaFormat()
