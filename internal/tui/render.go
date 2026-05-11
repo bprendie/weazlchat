@@ -306,6 +306,7 @@ func estimateMessages(messages []storage.Message) int {
 	total := 0
 	for _, msg := range messages {
 		total += estimateTokens(msg.Content)
+		total += estimateTokens(msg.ToolCalls)
 	}
 	return total
 }

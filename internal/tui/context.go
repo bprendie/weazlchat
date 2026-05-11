@@ -135,7 +135,7 @@ func (m model) shouldAutoTrim(history []storage.Message) bool {
 	if len(history) < 2 {
 		return false
 	}
-	return float64(m.contextTokenEstimateFor(history))/float64(m.contextBudget()) >= 0.97
+	return m.contextTokenEstimateFor(history) >= autoCompactThreshold(m.contextBudget())
 }
 
 func (m model) contextTokenEstimate() int {
@@ -168,7 +168,26 @@ func summaryTargetTokens(contextWindow int) int {
 	if contextWindow <= 0 {
 		contextWindow = 32768
 	}
-	return min(2000, max(500, contextWindow/32))
+	return min(6000, max(500, contextWindow/24))
+}
+
+func autoCompactThreshold(contextWindow int) int {
+	if contextWindow <= 0 {
+		contextWindow = 32768
+	}
+	soft := 0
+	switch {
+	case contextWindow <= 8192:
+		soft = int(float64(contextWindow) * 0.92)
+	case contextWindow <= 16384:
+		soft = int(float64(contextWindow) * 0.85)
+	case contextWindow <= 32768:
+		soft = int(float64(contextWindow) * 0.75)
+	default:
+		soft = min(49152, int(float64(contextWindow)*0.50))
+	}
+	hard := int(float64(contextWindow) * 0.97)
+	return min(soft, hard)
 }
 
 func transcriptForSummary(messages []storage.Message) string {
