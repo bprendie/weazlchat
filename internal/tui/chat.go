@@ -65,6 +65,8 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		}
 	case modeRenameWorkspace:
 		return m.finishRenameWorkspace()
+	case modeClearContext:
+		return m.confirmClearContext()
 	case modeChat:
 		if m.thinking {
 			return m, nil
@@ -146,6 +148,56 @@ func (m model) handleChatKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		}
 	}
 	return m, nil, false
+}
+
+func (m model) startClearContextConfirm() (tea.Model, tea.Cmd) {
+	m.mode = modeClearContext
+	m.status = "clear context?"
+	m.err = ""
+	return m, nil
+}
+
+func (m model) cancelClearContext() (tea.Model, tea.Cmd) {
+	m.mode = modeChat
+	m.status = "clear context canceled"
+	m.input.Focus()
+	return m, nil
+}
+
+func (m model) confirmClearContext() (tea.Model, tea.Cmd) {
+	if m.session.ID == "" {
+		return m.cancelClearContext()
+	}
+	if err := m.store.ClearSessionContext(m.session.ID); err != nil {
+		m.err = err.Error()
+		m.mode = modeChat
+		return m, nil
+	}
+	m.messages = nil
+	m.checkpoint = storage.ContextCheckpoint{}
+	m.hasCheckpoint = false
+	m.pendingTools = nil
+	m.toolResults = nil
+	m.streamText = ""
+	m.reqIn = 0
+	m.reqOut = 0
+	m.session.InputTokens = 0
+	m.session.OutputTokens = 0
+	m.session.Title = "New session"
+	m.activeWorkspaceID = 0
+	m.activeWorkspaceName = ""
+	m.activeWorkspaceAt = time.Time{}
+	m.historyIdx = 0
+	m.historyDraft = ""
+	m.pasteText = ""
+	m.pasteLines = 0
+	m.input.Reset()
+	m.mode = modeChat
+	m.status = "context cleared"
+	m.err = ""
+	m.input.Focus()
+	m.renderMessages()
+	return m, nil
 }
 
 func (m model) toggleMouseMode() (tea.Model, tea.Cmd) {

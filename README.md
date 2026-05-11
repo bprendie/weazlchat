@@ -114,6 +114,7 @@ Run setup first if you want the guided config flow:
 - `ctrl+s`: save current workspace view
 - `ctrl+w`: open workspace saves
 - `ctrl+t`: trim context into a summary checkpoint
+- `ctrl+u`: clear the active session context after confirmation
 - `esc`: back to chat
 - `ctrl+c`: quit
 
@@ -126,6 +127,8 @@ The provider's `context_window` lives in `~/.config/weazlchat/config.json`; it d
 Running out of room? Press `ctrl+t` to have the active model summarize the current conversation into a compact checkpoint. The summary target scales with your configured context window, bounded between 500 and 6000 tokens. Future requests send that checkpoint summary plus only the new messages, saving your hardware from replaying the entire session from the top.
 
 If you forget, WeazlChat has your back. It automatically trims context using opinionated working-context thresholds: small windows run close to the edge, while large windows compact much earlier so 128k context stays useful headroom instead of a giant prompt tax. Your current prompt stays outside the checkpoint and is sent normally right after the trim finishes.
+
+Need a truly clean slate inside the current session? Press `ctrl+u` and confirm. That clears the active messages, tool-call history, and context checkpoints from SQLite for the current session, resets the context meter, and leaves you at a fresh prompt without guessing whether old history is still in play.
 
 ## TUI Feedback
 

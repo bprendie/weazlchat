@@ -27,6 +27,8 @@ func (m model) View() string {
 		body = m.styles.panel.Render(fmt.Sprintf("%s loading previous session", m.working.View()))
 	case modeRenameWorkspace:
 		body = m.renameWorkspaceView()
+	case modeClearContext:
+		body = m.clearContextView()
 	case modeSessions:
 		body = m.sessions.View()
 	case modeWorkspace:
@@ -53,6 +55,20 @@ func (m model) renameWorkspaceView() string {
 		Background(panel).
 		Padding(1, 2).
 		Render("Rename workspace\n\n"+m.input.View()+"\n"+prompt))
+}
+
+func (m model) clearContextView() string {
+	w := max(20, m.width-6)
+	popupWidth := min(66, max(30, w-4))
+	count := len(m.messages)
+	copy := fmt.Sprintf("Clear this session's active context?\n\nThis deletes %d message(s), tool-call history, and context checkpoints from SQLite for the current session.\n\n[ enter yes ]   [ esc no ]", count)
+	return lipgloss.PlaceHorizontal(w, lipgloss.Center, lipgloss.NewStyle().
+		Width(popupWidth).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(crushPink).
+		Background(panel).
+		Padding(1, 2).
+		Render(copy))
 }
 
 // renderMessages updates the viewport with the current message history and streaming state
@@ -172,6 +188,9 @@ func (m model) helpText() string {
 	if m.mode == modeRenameWorkspace {
 		return "enter save rename | esc cancel | ctrl+c quit"
 	}
+	if m.mode == modeClearContext {
+		return "enter clear context | esc cancel | ctrl+c quit"
+	}
 	if m.mode == modeSessions {
 		return "enter resume | ctrl+d delete session | esc back | ctrl+c quit"
 	}
@@ -186,7 +205,7 @@ func (m model) helpText() string {
 	if m.activeWorkspaceID != 0 {
 		renameHelp = " | ctrl+e rename"
 	}
-	return "enter send/select | wheel/pgup/pgdn scroll | " + mouseHelp + " | ctrl+n new | ctrl+t trim | ctrl+r workspaces | ctrl+s save" + renameHelp + " | ctrl+c quit"
+	return "enter send/select | wheel/pgup/pgdn scroll | " + mouseHelp + " | ctrl+n new | ctrl+t trim | ctrl+u clear | ctrl+r workspaces | ctrl+s save" + renameHelp + " | ctrl+c quit"
 }
 
 // inputView returns the input field view with paste indicator if applicable

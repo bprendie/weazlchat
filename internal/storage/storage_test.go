@@ -88,6 +88,62 @@ func TestContextCheckpointRoundTrip(t *testing.T) {
 	}
 }
 
+func TestClearSessionContext(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "test.sqlite3"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if err := store.CreateVault("pw"); err != nil {
+		t.Fatalf("CreateVault: %v", err)
+	}
+	if err := store.CreateSession("s1", "title", "provider", "model"); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if err := store.AddMessage("s1", "user", "hello"); err != nil {
+		t.Fatalf("AddMessage: %v", err)
+	}
+	messages, err := store.Messages("s1")
+	if err != nil {
+		t.Fatalf("Messages: %v", err)
+	}
+	if err := store.SaveContextCheckpoint("s1", messages[0].ID, "summary"); err != nil {
+		t.Fatalf("SaveContextCheckpoint: %v", err)
+	}
+	if err := store.AddSessionTokens("s1", 10, 20); err != nil {
+		t.Fatalf("AddSessionTokens: %v", err)
+	}
+
+	if err := store.ClearSessionContext("s1"); err != nil {
+		t.Fatalf("ClearSessionContext: %v", err)
+	}
+	messages, err = store.Messages("s1")
+	if err != nil {
+		t.Fatalf("Messages after clear: %v", err)
+	}
+	if len(messages) != 0 {
+		t.Fatalf("len(messages) = %d, want 0", len(messages))
+	}
+	if _, ok, err := store.LatestContextCheckpoint("s1"); err != nil {
+		t.Fatalf("LatestContextCheckpoint after clear: %v", err)
+	} else if ok {
+		t.Fatal("LatestContextCheckpoint ok = true, want false")
+	}
+	sess, ok, err := store.Session("s1")
+	if err != nil {
+		t.Fatalf("Session: %v", err)
+	}
+	if !ok {
+		t.Fatal("Session ok = false, want true")
+	}
+	if sess.Title != "New session" || sess.InputTokens != 0 || sess.OutputTokens != 0 {
+		t.Fatalf("session after clear = %#v, want reset title/tokens", sess)
+	}
+}
+
 func TestRenameWorkspace(t *testing.T) {
 	store, err := Open(filepath.Join(t.TempDir(), "test.sqlite3"))
 	if err != nil {

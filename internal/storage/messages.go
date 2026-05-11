@@ -119,3 +119,32 @@ func (s *Store) LatestContextCheckpoint(sessionID string) (ContextCheckpoint, bo
 	cp.Summary = summary
 	return cp, true, nil
 }
+
+func (s *Store) ClearSessionContext(sessionID string) error {
+	if !s.unlocked {
+		return errors.New("database is locked")
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`delete from messages where session_id = ?`, sessionID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`delete from context_checkpoints where session_id = ?`, sessionID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		`update sessions
+		 set title = 'New session',
+		     input_tokens = 0,
+		     output_tokens = 0,
+		     updated_at = current_timestamp
+		 where id = ?`,
+		sessionID,
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
+}

@@ -29,6 +29,7 @@ const (
 	modeSessions
 	modeWorkspace
 	modeRenameWorkspace
+	modeClearContext
 )
 
 type model struct {
@@ -182,6 +183,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.mode == modeChat && !m.thinking {
 				return m.trimContext(false, "", 0, 0)
 			}
+		case "ctrl+u":
+			if m.mode == modeChat && !m.thinking {
+				return m.startClearContextConfirm()
+			}
 		case "ctrl+m":
 			if m.mode == modeChat {
 				return m.toggleMouseMode()
@@ -232,6 +237,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.mode == modeRenameWorkspace {
 				return m.cancelRenameWorkspace()
+			}
+			if m.mode == modeClearContext {
+				return m.cancelClearContext()
 			}
 		case "enter":
 			return m.handleEnter()
@@ -382,6 +390,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
 		cmds = append(cmds, cmd)
+	case modeClearContext:
+		return m, nil
 	default:
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
