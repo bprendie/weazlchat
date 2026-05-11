@@ -252,8 +252,20 @@ func formatWeather(place weatherPlace, forecast weatherForecast, tempUnit string
 		location += ", " + place.Country
 	}
 
+	requestDate := time.Now().Format("2006-01-02")
+	if place.Timezone != "" {
+		if loc, err := time.LoadLocation(place.Timezone); err == nil {
+			requestDate = time.Now().In(loc).Format("2006-01-02")
+		}
+	}
+
 	var b strings.Builder
 	fmt.Fprintf(&b, "Weather for %s\n", location)
+	fmt.Fprintf(&b, "Request date: %s", requestDate)
+	if place.Timezone != "" {
+		fmt.Fprintf(&b, " (%s)", place.Timezone)
+	}
+	b.WriteByte('\n')
 	fmt.Fprintf(&b, "Current: %.0f%s, feels like %.0f%s, %s\n",
 		forecast.Current.Temperature2m,
 		unit,
@@ -278,8 +290,12 @@ func formatWeather(place weatherPlace, forecast weatherForecast, tempUnit string
 			if i < len(forecast.Daily.PrecipitationSum) {
 				precip = forecast.Daily.PrecipitationSum[i]
 			}
+			label := day
+			if day == requestDate {
+				label += " (today)"
+			}
 			fmt.Fprintf(&b, "%s: %.0f%s/%.0f%s, %s, precip %.2f %s\n",
-				day,
+				label,
 				forecast.Daily.TemperatureMax[i],
 				unit,
 				forecast.Daily.TemperatureMin[i],

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/bprendie/weazlchat/internal/config"
 	"github.com/bprendie/weazlchat/internal/storage"
@@ -104,6 +105,7 @@ func (c Client) Summarize(ctx context.Context, transcript string, targetTokens i
 func chatMessages(history []storage.Message, prompt string) []ChatMessage {
 	messages := make([]ChatMessage, 0, len(history)+2)
 	messages = append(messages, ChatMessage{Role: "system", Content: markdownResponseSystemPrompt})
+	messages = append(messages, ChatMessage{Role: "system", Content: currentDateSystemPrompt()})
 	for _, msg := range history {
 		cm := ChatMessage{Role: msg.Role, Content: msg.Content}
 		// Parse tool calls if present in metadata
@@ -145,6 +147,7 @@ type ollamaToolCall struct {
 func ollamaChatMessages(history []storage.Message, prompt string) []ollamaMessage {
 	messages := make([]ollamaMessage, 0, len(history)+2)
 	messages = append(messages, ollamaMessage{Role: "system", Content: markdownResponseSystemPrompt})
+	messages = append(messages, ollamaMessage{Role: "system", Content: currentDateSystemPrompt()})
 	toolNames := make(map[string]string)
 	for _, msg := range history {
 		cm := ollamaMessage{Role: msg.Role, Content: msg.Content}
@@ -180,6 +183,15 @@ func ollamaChatMessages(history []storage.Message, prompt string) []ollamaMessag
 		messages = append(messages, ollamaMessage{Role: "user", Content: prompt})
 	}
 	return messages
+}
+
+func currentDateSystemPrompt() string {
+	now := time.Now()
+	location := time.Local.String()
+	if location == "" {
+		location = "local"
+	}
+	return fmt.Sprintf("Current local date/time for this request: %s (%s). Treat words like today, tomorrow, yesterday, latest, and current relative to this timestamp unless tool output says otherwise.", now.Format(time.RFC1123Z), location)
 }
 
 func (c Client) streamOpenAICompat(ctx context.Context, messages []ChatMessage, onEvent func(StreamEvent)) (Usage, error) {
