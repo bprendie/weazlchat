@@ -104,8 +104,7 @@ func (c Client) Summarize(ctx context.Context, transcript string, targetTokens i
 
 func chatMessages(history []storage.Message, prompt string) []ChatMessage {
 	messages := make([]ChatMessage, 0, len(history)+2)
-	messages = append(messages, ChatMessage{Role: "system", Content: markdownResponseSystemPrompt})
-	messages = append(messages, ChatMessage{Role: "system", Content: currentDateSystemPrompt()})
+	messages = append(messages, ChatMessage{Role: "system", Content: systemPrompt()})
 	for _, msg := range history {
 		cm := ChatMessage{Role: msg.Role, Content: msg.Content}
 		// Parse tool calls if present in metadata
@@ -146,8 +145,7 @@ type ollamaToolCall struct {
 
 func ollamaChatMessages(history []storage.Message, prompt string) []ollamaMessage {
 	messages := make([]ollamaMessage, 0, len(history)+2)
-	messages = append(messages, ollamaMessage{Role: "system", Content: markdownResponseSystemPrompt})
-	messages = append(messages, ollamaMessage{Role: "system", Content: currentDateSystemPrompt()})
+	messages = append(messages, ollamaMessage{Role: "system", Content: systemPrompt()})
 	toolNames := make(map[string]string)
 	for _, msg := range history {
 		cm := ollamaMessage{Role: msg.Role, Content: msg.Content}
@@ -183,6 +181,10 @@ func ollamaChatMessages(history []storage.Message, prompt string) []ollamaMessag
 		messages = append(messages, ollamaMessage{Role: "user", Content: prompt})
 	}
 	return messages
+}
+
+func systemPrompt() string {
+	return markdownResponseSystemPrompt + "\n\n" + currentDateSystemPrompt()
 }
 
 func currentDateSystemPrompt() string {

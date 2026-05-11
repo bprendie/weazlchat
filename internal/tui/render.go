@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -107,6 +108,10 @@ func (m *model) renderTranscript(messages []storage.Message) string {
 				continue
 			}
 			if msg.Role == "assistant" && strings.TrimSpace(msg.Content) == "" {
+				if label := toolCallLabel(msg.ToolCalls); label != "" {
+					b.WriteString(m.styles.system.Render(label))
+					b.WriteString("\n\n")
+				}
 				continue
 			}
 
@@ -124,6 +129,30 @@ func (m *model) renderTranscript(messages []storage.Message) string {
 		}
 	}
 	return b.String()
+}
+
+func toolCallLabel(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	var calls []struct {
+		Function struct {
+			Name string `json:"name"`
+		} `json:"function"`
+	}
+	if err := json.Unmarshal([]byte(raw), &calls); err != nil || len(calls) == 0 {
+		return "🔧 used tools"
+	}
+	names := make([]string, 0, len(calls))
+	for _, call := range calls {
+		if call.Function.Name != "" {
+			names = append(names, call.Function.Name)
+		}
+	}
+	if len(names) == 0 {
+		return "🔧 used tools"
+	}
+	return "🔧 used " + strings.Join(names, ", ")
 }
 
 // getToolNames returns a list of registered tool names
