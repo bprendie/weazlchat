@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 )
 
@@ -126,29 +125,5 @@ func (t *CalculatorTool) Execute(ctx context.Context, params map[string]any) (st
 
 	default:
 		return "", fmt.Errorf("unsupported operation: %s", operation)
-	}
-}
-
-func getNumber(params map[string]any, key string) (float64, error) {
-	val, ok := params[key]
-	if !ok {
-		return 0, fmt.Errorf("%s parameter is required", key)
-	}
-
-	switch v := val.(type) {
-	case float64:
-		return v, nil
-	case int:
-		return float64(v), nil
-	case int64:
-		return float64(v), nil
-	case string:
-		f, err := strconv.ParseFloat(v, 64)
-		if err != nil {
-			return 0, fmt.Errorf("%s must be a number, got: %s", key, v)
-		}
-		return f, nil
-	default:
-		return 0, fmt.Errorf("%s must be a number, got: %T", key, val)
 	}
 }

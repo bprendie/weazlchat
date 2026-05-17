@@ -6,24 +6,6 @@ import (
 	"strings"
 )
 
-func intParam(params map[string]any, key string, def, min, max int) int {
-	if _, ok := params[key]; !ok {
-		return def
-	}
-	n, err := getNumber(params, key)
-	if err != nil {
-		return def
-	}
-	v := int(n)
-	if v < min {
-		return min
-	}
-	if v > max {
-		return max
-	}
-	return v
-}
-
 func skipHidden(root, path string) bool {
 	rel, err := filepath.Rel(root, path)
 	if err != nil || rel == "." {

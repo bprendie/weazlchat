@@ -2,9 +2,7 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -68,26 +66,6 @@ func (t *StockPriceTool) Execute(ctx context.Context, params map[string]any) (st
 	reqURL := baseURL + "?" + params2.Encode()
 
 	// Make request
-	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := t.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch stock data: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API returned status %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
-	}
-
 	// Parse response
 	var result struct {
 		GlobalQuote struct {
@@ -103,7 +81,7 @@ func (t *StockPriceTool) Execute(ctx context.Context, params map[string]any) (st
 		Error string `json:"Error Message"`
 	}
 
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := getJSON(ctx, t.client, reqURL, nil, &result); err != nil {
 		return "", fmt.Errorf("failed to parse response: %w", err)
 	}
 

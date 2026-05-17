@@ -2,9 +2,7 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -167,7 +165,7 @@ func (t *WeatherTool) geocode(ctx context.Context, location string) (weatherPlac
 			Timezone  string  `json:"timezone"`
 		} `json:"results"`
 	}
-	if err := t.getJSON(ctx, u.String(), &result); err != nil {
+	if err := getJSON(ctx, t.client, u.String(), weatherHeaders(), &result); err != nil {
 		return weatherPlace{}, err
 	}
 	if len(result.Results) == 0 {
@@ -204,32 +202,15 @@ func (t *WeatherTool) forecast(ctx context.Context, place weatherPlace, days int
 	u.RawQuery = q.Encode()
 
 	var forecast weatherForecast
-	if err := t.getJSON(ctx, u.String(), &forecast); err != nil {
+	if err := getJSON(ctx, t.client, u.String(), weatherHeaders(), &forecast); err != nil {
 		return weatherForecast{}, err
 	}
 	return forecast, nil
 }
 
-func (t *WeatherTool) getJSON(ctx context.Context, requestURL string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
-	if err != nil {
-		return err
+func weatherHeaders() map[string]string {
+	return map[string]string{
+		"Accept":     "application/json",
+		"User-Agent": userAgent,
 	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "weazlchat (https://github.com/bprendie/weazlchat)")
-
-	resp, err := t.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return fmt.Errorf("%s returned %s: %s", requestURL, resp.Status, strings.TrimSpace(string(body)))
-	}
-	return json.Unmarshal(body, out)
 }

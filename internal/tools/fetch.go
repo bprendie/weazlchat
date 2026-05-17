@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -60,22 +59,7 @@ func (t *FetchURLTool) Execute(ctx context.Context, params map[string]any) (stri
 	if err := rejectPrivateHost(u.Hostname()); err != nil {
 		return "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("User-Agent", "weazlchat (https://github.com/bprendie/weazlchat)")
-	req.Header.Set("Accept", "text/html,text/plain,application/xhtml+xml,application/json;q=0.8,*/*;q=0.2")
-
-	resp, err := t.client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return "", fmt.Errorf("%s returned %s", u.String(), resp.Status)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(t.limits.outputLimit()*4)))
+	body, resp, err := getBody(ctx, t.client, u.String(), fetchHeaders(), int64(t.limits.outputLimit()*4))
 	if err != nil {
 		return "", err
 	}
@@ -85,6 +69,13 @@ func (t *FetchURLTool) Execute(ctx context.Context, params map[string]any) (stri
 		text = text[:maxChars] + fmt.Sprintf("\n\n[truncated: %d chars omitted]", len(text)-maxChars)
 	}
 	return fmt.Sprintf("Fetched: %s\n\n%s", resp.Request.URL.String(), strings.TrimSpace(text)), nil
+}
+
+func fetchHeaders() map[string]string {
+	return map[string]string{
+		"User-Agent": userAgent,
+		"Accept":     "text/html,text/plain,application/xhtml+xml,application/json;q=0.8,*/*;q=0.2",
+	}
 }
 
 func rejectPrivateHost(host string) error {

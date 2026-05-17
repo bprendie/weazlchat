@@ -2,9 +2,7 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -107,27 +105,6 @@ func (t *WebSearchTool) Execute(ctx context.Context, params map[string]any) (str
 	}
 	u.RawQuery = q.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Subscription-Token", t.apiKey)
-
-	resp, err := t.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to search web: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return "", fmt.Errorf("Brave Search API returned %s: %s", resp.Status, strings.TrimSpace(string(body)))
-	}
-
 	var result struct {
 		Web struct {
 			Results []struct {
@@ -141,7 +118,7 @@ func (t *WebSearchTool) Execute(ctx context.Context, params map[string]any) (str
 			Original string `json:"original"`
 		} `json:"query"`
 	}
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := getJSON(ctx, t.client, u.String(), braveHeaders(t.apiKey), &result); err != nil {
 		return "", fmt.Errorf("failed to parse response: %w", err)
 	}
 	if len(result.Web.Results) == 0 {
@@ -165,4 +142,11 @@ func (t *WebSearchTool) Execute(ctx context.Context, params map[string]any) (str
 		b.WriteByte('\n')
 	}
 	return strings.TrimSpace(b.String()), nil
+}
+
+func braveHeaders(apiKey string) map[string]string {
+	return map[string]string{
+		"Accept":               "application/json",
+		"X-Subscription-Token": apiKey,
+	}
 }
