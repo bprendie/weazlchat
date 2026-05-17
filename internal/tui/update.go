@@ -27,7 +27,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return updated, cmd
 			}
 		}
-		return m.handleGlobalKey(msg)
+		if updated, cmd, handled := m.handleGlobalKey(msg); handled {
+			return updated, cmd
+		}
 	case streamEvent:
 		return m.handleStreamEvent(msg)
 	case contextTrimMsg:

@@ -6,80 +6,93 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func (m model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	switch msg.String() {
 	case "ctrl+c":
-		return m, tea.Quit
+		return m, tea.Quit, true
 	case "ctrl+n":
 		if m.mode == modeChat {
-			return m.newSession()
+			updated, cmd := m.newSession()
+			return updated, cmd, true
 		}
 	case "ctrl+s":
 		if m.mode == modeChat {
 			m.saveWorkspace()
+			return m, nil, true
 		}
 	case "ctrl+t":
 		if m.mode == modeChat && !m.thinking {
-			return m.trimContext(false, "", 0, 0)
+			updated, cmd := m.trimContext(false, "", 0, 0)
+			return updated, cmd, true
 		}
 	case "ctrl+u":
 		if m.mode == modeChat && !m.thinking {
-			return m.startClearContextConfirm()
+			updated, cmd := m.startClearContextConfirm()
+			return updated, cmd, true
 		}
 	case "ctrl+m":
 		if m.mode == modeChat {
-			return m.toggleMouseMode()
+			updated, cmd := m.toggleMouseMode()
+			return updated, cmd, true
 		}
 	case "ctrl+r", "ctrl+w":
 		if m.mode == modeChat {
-			return m.showWorkspaces()
+			updated, cmd := m.showWorkspaces()
+			return updated, cmd, true
 		}
 	case "ctrl+d":
 		if m.mode == modeSessions {
-			return m.deleteSelectedSession()
+			updated, cmd := m.deleteSelectedSession()
+			return updated, cmd, true
 		}
 		if m.mode == modeWorkspace {
-			return m.deleteSelectedWorkspace()
+			updated, cmd := m.deleteSelectedWorkspace()
+			return updated, cmd, true
 		}
 	case "ctrl+e":
 		if (m.mode == modeChat && !m.thinking) || m.mode == modeWorkspace {
-			return m.startRenameWorkspace()
+			updated, cmd := m.startRenameWorkspace()
+			return updated, cmd, true
 		}
 	case "pgup":
 		if m.mode == modeChat {
 			m.viewport.PageUp()
-			return m, nil
+			return m, nil, true
 		}
 	case "pgdown":
 		if m.mode == modeChat {
 			m.viewport.PageDown()
-			return m, nil
+			return m, nil, true
 		}
 	case "home":
 		if m.mode == modeChat {
 			m.viewport.GotoTop()
-			return m, nil
+			return m, nil, true
 		}
 	case "end":
 		if m.mode == modeChat {
 			m.viewport.GotoBottom()
-			return m, nil
+			return m, nil, true
 		}
 	case "esc":
 		if m.mode == modeSessions || m.mode == modeWorkspace {
 			m.mode = modeChat
 			m.input.Focus()
+			return m, nil, true
 		}
 		if m.mode == modeRenameWorkspace {
-			return m.cancelRenameWorkspace()
+			updated, cmd := m.cancelRenameWorkspace()
+			return updated, cmd, true
 		}
 		if m.mode == modeClearContext {
-			return m.cancelClearContext()
+			updated, cmd := m.cancelClearContext()
+			return updated, cmd, true
 		}
 	case "enter":
-		return m.handleEnter()
+		updated, cmd := m.handleEnter()
+		return updated, cmd, true
 	}
-	return m, nil
+	return m, nil, false
 }
 
 func looksLikePaste(msg tea.KeyMsg) bool {
