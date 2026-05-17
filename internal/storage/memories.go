@@ -1,0 +1,95 @@
+package storage
+
+import (
+	"database/sql"
+	"errors"
+	"strings"
+)
+
+func (s *Store) Remember(key, value, tags string) error {
+	if !s.unlocked {
+		return errors.New("database is locked")
+	}
+	blob, err := s.encrypt(value)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(
+		`insert into memories (key, value, tags, updated_at)
+		 values (?, ?, ?, current_timestamp)
+		 on conflict(key) do update set value = excluded.value, tags = excluded.tags, updated_at = current_timestamp`,
+		key, blob, tags,
+	)
+	return err
+}
+
+func (s *Store) ForgetMemory(key string) error {
+	if !s.unlocked {
+		return errors.New("database is locked")
+	}
+	_, err := s.db.Exec(`delete from memories where key = ?`, key)
+	return err
+}
+
+func (s *Store) Memories(limit int) ([]Memory, error) {
+	if !s.unlocked {
+		return nil, errors.New("database is locked")
+	}
+	rows, err := s.db.Query(`select key, value, coalesce(tags, ''), created_at, updated_at from memories order by updated_at desc limit ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return s.scanMemories(rows)
+}
+
+func (s *Store) RecallMemories(query string, limit int) ([]Memory, error) {
+	if !s.unlocked {
+		return nil, errors.New("database is locked")
+	}
+	rows, err := s.db.Query(`select key, value, coalesce(tags, ''), created_at, updated_at from memories order by updated_at desc limit 500`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	memories, err := s.scanMemories(rows)
+	if err != nil {
+		return nil, err
+	}
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		if len(memories) > limit {
+			return memories[:limit], nil
+		}
+		return memories, nil
+	}
+	filtered := make([]Memory, 0, min(limit, len(memories)))
+	for _, memory := range memories {
+		haystack := strings.ToLower(memory.Key + "\n" + memory.Tags + "\n" + memory.Value)
+		if strings.Contains(haystack, query) {
+			filtered = append(filtered, memory)
+			if len(filtered) >= limit {
+				break
+			}
+		}
+	}
+	return filtered, nil
+}
+
+func (s *Store) scanMemories(rows *sql.Rows) ([]Memory, error) {
+	var memories []Memory
+	for rows.Next() {
+		var memory Memory
+		var enc string
+		if err := rows.Scan(&memory.Key, &enc, &memory.Tags, &memory.CreatedAt, &memory.UpdatedAt); err != nil {
+			return nil, err
+		}
+		value, err := s.decrypt(enc)
+		if err != nil {
+			return nil, err
+		}
+		memory.Value = value
+		memories = append(memories, memory)
+	}
+	return memories, rows.Err()
+}
