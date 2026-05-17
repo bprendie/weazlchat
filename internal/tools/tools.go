@@ -79,78 +79,12 @@ func (r *Registry) List() []Tool {
 
 // ToOpenAIFormat converts tools to OpenAI function calling format
 func (r *Registry) ToOpenAIFormat() []map[string]any {
-	functions := make([]map[string]any, 0, len(r.tools))
-	for _, tool := range r.List() {
-		properties := make(map[string]any)
-		required := make([]string, 0)
-
-		for _, param := range tool.Parameters() {
-			paramDef := map[string]any{
-				"type":        param.Type,
-				"description": param.Description,
-			}
-			if len(param.Enum) > 0 {
-				paramDef["enum"] = param.Enum
-			}
-			properties[param.Name] = paramDef
-			if param.Required {
-				required = append(required, param.Name)
-			}
-		}
-
-		function := map[string]any{
-			"type": "function",
-			"function": map[string]any{
-				"name":        tool.Name(),
-				"description": tool.Description(),
-				"parameters": map[string]any{
-					"type":       "object",
-					"properties": properties,
-					"required":   required,
-				},
-			},
-		}
-		functions = append(functions, function)
-	}
-	return functions
+	return r.toolSchemas()
 }
 
 // ToOllamaFormat converts tools to Ollama tool format
 func (r *Registry) ToOllamaFormat() []map[string]any {
-	tools := make([]map[string]any, 0, len(r.tools))
-	for _, tool := range r.List() {
-		properties := make(map[string]any)
-		required := make([]string, 0)
-
-		for _, param := range tool.Parameters() {
-			paramDef := map[string]any{
-				"type":        param.Type,
-				"description": param.Description,
-			}
-			if len(param.Enum) > 0 {
-				paramDef["enum"] = param.Enum
-			}
-			properties[param.Name] = paramDef
-			if param.Required {
-				required = append(required, param.Name)
-			}
-		}
-
-		toolDef := map[string]any{
-			"type": "function",
-			"function": map[string]any{
-				"name":        tool.Name(),
-				"description": tool.Description(),
-				"parameters": map[string]any{
-					"type":       "object",
-					"properties": properties,
-					"required":   required,
-				},
-			},
-		}
-		tools = append(tools, toolDef)
-	}
-	return tools
+	return r.toolSchemas()
 }
 
 // ToolCall represents a tool invocation from the LLM
