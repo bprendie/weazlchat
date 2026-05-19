@@ -41,12 +41,55 @@ func (m model) metricsView() string {
 	budget := m.contextBudget()
 	contextTokens := m.contextTokenEstimate()
 	pct := min(1.0, float64(contextTokens)/float64(budget))
-	text := fmt.Sprintf("ctx %s %d/%d  in %d  out %d  %.1f t/s", m.contextBar.ViewAs(pct), contextTokens, budget, totalIn, totalOut, tps)
 	width := max(20, m.width-6)
-	if len(text) < width {
-		text = strings.Repeat(" ", width-len(text)) + text
+	ctx := lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		m.styles.statusLabel.Render("ctx"),
+		" ",
+		m.contextBar.ViewAs(pct),
+		" ",
+		m.styles.statusValue.Render(fmt.Sprintf("%d/%d", contextTokens, budget)),
+	)
+	stats := lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		m.metricSegment("in", totalIn),
+		"  ",
+		m.metricSegment("out", totalOut),
+		"  ",
+		m.styles.statusLabel.Render(fmt.Sprintf("%.1f", tps)),
+		m.styles.help.Render(" t/s"),
+	)
+	gap := width - lipgloss.Width(ctx) - lipgloss.Width(stats)
+	if gap < 1 {
+		gap = 1
 	}
-	return m.styles.help.Render(text)
+	return lipgloss.JoinHorizontal(lipgloss.Top, ctx, strings.Repeat(" ", gap), stats)
+}
+
+func (m model) metricSegment(label string, value int) string {
+	return lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		m.styles.statusLabel.Render(label),
+		" ",
+		m.styles.statusValue.Render(fmt.Sprintf("%d", value)),
+	)
+}
+
+func (m model) helpView() string {
+	parts := strings.Split(m.helpText(), " | ")
+	rendered := make([]string, 0, len(parts)*2)
+	for i, part := range parts {
+		if i > 0 {
+			rendered = append(rendered, m.styles.help.Render(" | "))
+		}
+		words := strings.SplitN(part, " ", 2)
+		if len(words) == 1 {
+			rendered = append(rendered, m.styles.helpKey.Render(words[0]))
+			continue
+		}
+		rendered = append(rendered, m.styles.helpKey.Render(words[0])+" "+m.styles.help.Render(words[1]))
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, rendered...)
 }
 
 // helpText returns context-appropriate help text for the current mode

@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/bprendie/weazlchat/internal/config"
 	"github.com/bprendie/weazlchat/internal/llm"
@@ -98,17 +99,23 @@ func New(cfg config.Config, cfgPath string, store *storage.Store, toolRegistry *
 	ti.Focus()
 	ti.CharLimit = 65535
 
-	sessions := list.New(nil, list.NewDefaultDelegate(), 0, 0)
-	sessions.Title = "Sessions"
-	workspaces := list.New(nil, list.NewDefaultDelegate(), 0, 0)
-	workspaces.Title = "Workspace Saves"
-
 	s := newStyles()
+	sessions := list.New(nil, newListDelegate(), 0, 0)
+	sessions.Title = "Sessions"
+	styleList(&sessions, s)
+	workspaces := list.New(nil, newListDelegate(), 0, 0)
+	workspaces.Title = "Workspace Saves"
+	styleList(&workspaces, s)
+
 	working := spinner.New(
 		spinner.WithSpinner(spinner.Jump),
 		spinner.WithStyle(s.assistant),
 	)
-	contextBar := progress.New(progress.WithDefaultGradient(), progress.WithoutPercentage())
+	contextBar := progress.New(
+		progress.WithoutPercentage(),
+		progress.WithSolidFill(string(crushMint)),
+	)
+	contextBar.EmptyColor = string(border)
 
 	return model{
 		cfg:          cfg,
@@ -127,6 +134,42 @@ func New(cfg config.Config, cfgPath string, store *storage.Store, toolRegistry *
 		mouseScroll:  true,
 		status:       "private local chat",
 	}
+}
+
+func newListDelegate() list.DefaultDelegate {
+	delegate := list.NewDefaultDelegate()
+	delegate.SetSpacing(1)
+	delegate.Styles.NormalTitle = lipgloss.NewStyle().
+		Foreground(ink).
+		Padding(0, 0, 0, 2)
+	delegate.Styles.NormalDesc = lipgloss.NewStyle().
+		Foreground(muted).
+		Padding(0, 0, 0, 2)
+	delegate.Styles.SelectedTitle = lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder(), false, false, false, true).
+		BorderForeground(crushPink).
+		Foreground(crushGold).
+		Bold(true).
+		Padding(0, 0, 0, 1)
+	delegate.Styles.SelectedDesc = lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder(), false, false, false, true).
+		BorderForeground(crushPink).
+		Foreground(crushMint).
+		Padding(0, 0, 0, 1)
+	delegate.Styles.DimmedTitle = delegate.Styles.NormalTitle.Foreground(muted)
+	delegate.Styles.DimmedDesc = delegate.Styles.NormalDesc.Foreground(border)
+	delegate.Styles.FilterMatch = lipgloss.NewStyle().
+		Foreground(crushPink).
+		Bold(true)
+	return delegate
+}
+
+func styleList(l *list.Model, s styles) {
+	l.Styles.Title = s.roleSystem
+	l.Styles.PaginationStyle = s.help
+	l.Styles.HelpStyle = s.help
+	l.Styles.FilterPrompt = s.system
+	l.Styles.FilterCursor = s.status
 }
 
 func (m model) Init() tea.Cmd {

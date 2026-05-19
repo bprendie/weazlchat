@@ -33,12 +33,16 @@ func (m model) View() string {
 		body = m.workspaces.View()
 	default:
 		input := m.inputView()
+		inputStyle := m.styles.input
 		if m.thinking {
 			input = m.thinkingView()
+			inputStyle = m.styles.inputWorking
+		} else if !m.mouseScroll {
+			inputStyle = m.styles.inputCopy
 		}
-		body = m.viewport.View() + "\n" + m.metricsView() + "\n" + m.styles.input.Width(max(20, m.width-6)).Render(input)
+		body = m.viewport.View() + "\n" + m.metricsView() + "\n" + inputStyle.Width(max(20, m.width-6)).Render(input)
 	}
-	help := m.styles.help.Render(m.helpText())
+	help := m.helpView()
 	return m.styles.frame.Width(m.width).Height(m.height).Render(strings.Join([]string{header, status, body, help}, "\n"))
 }
 
@@ -47,9 +51,11 @@ func (m *model) renderMessages() {
 	var b strings.Builder
 	b.WriteString(m.renderTranscript(m.messages))
 	if m.thinking {
-		b.WriteString(m.styles.assistant.Render("ai"))
+		b.WriteString(m.styles.roleAI.Render("ai"))
 		b.WriteString("\n")
 		if len(m.pendingTools) > 0 {
+			b.WriteString(m.styles.roleTool.Render("tool"))
+			b.WriteString(" ")
 			b.WriteString(m.styles.system.Render("🔧 using tools"))
 			b.WriteString("\n")
 		}
@@ -67,10 +73,14 @@ func (m *model) renderMessages() {
 func (m *model) renderTranscript(messages []storage.Message) string {
 	var b strings.Builder
 	if len(messages) == 0 {
+		b.WriteString(m.styles.roleSystem.Render("ready"))
+		b.WriteString(" ")
 		b.WriteString(m.styles.system.Render("W34Zl Ch4T is ready. Local providers only."))
 		if m.cfg.Tools.Enabled {
 			b.WriteString("\n")
-			b.WriteString(m.styles.system.Render("Tools enabled: " + strings.Join(m.getToolNames(), ", ")))
+			b.WriteString(m.styles.roleTool.Render("tools"))
+			b.WriteString(" ")
+			b.WriteString(m.styles.help.Render(strings.Join(m.getToolNames(), ", ")))
 		}
 	} else {
 		for _, msg := range messages {
@@ -79,17 +89,15 @@ func (m *model) renderTranscript(messages []storage.Message) string {
 			}
 			if msg.Role == "assistant" && strings.TrimSpace(msg.Content) == "" {
 				if label := toolCallLabel(msg.ToolCalls); label != "" {
+					b.WriteString(m.styles.roleTool.Render("tool"))
+					b.WriteString(" ")
 					b.WriteString(m.styles.system.Render(label))
 					b.WriteString("\n\n")
 				}
 				continue
 			}
 
-			label := m.styles.user.Render("you")
-			if msg.Role == "assistant" {
-				label = m.styles.assistant.Render("ai")
-			}
-			b.WriteString(label)
+			b.WriteString(m.roleLabel(msg.Role))
 			b.WriteString("\n")
 
 			if msg.Content != "" {
@@ -99,6 +107,17 @@ func (m *model) renderTranscript(messages []storage.Message) string {
 		}
 	}
 	return b.String()
+}
+
+func (m model) roleLabel(role string) string {
+	switch role {
+	case "assistant":
+		return m.styles.roleAI.Render("ai")
+	case "system":
+		return m.styles.roleSystem.Render("sys")
+	default:
+		return m.styles.roleUser.Render("you")
+	}
 }
 
 func toolCallLabel(raw string) string {
