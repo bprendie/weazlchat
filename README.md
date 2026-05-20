@@ -6,7 +6,10 @@ WeazlChat is a private, local-first AI chat TUI for vLLM and Ollama servers. Thi
 
 ## Defaults
 
-On first launch, WeazlChat drops a fresh `config.json` into `~/.config/weazlchat/` with sensible local defaults:
+On first launch, WeazlChat drops a fresh `config.json` into the local app config directory with sensible defaults:
+
+- Linux/macOS: `~/.config/weazlchat/config.json`
+- Windows: `%APPDATA%\weazlchat\config.json`
 
 - `local-vllm`: `http://localhost:8000`
 - model: `local-model`
@@ -26,9 +29,15 @@ go run ./cmd/weazlchat
 ./scripts/install.sh
 ```
 
-The installer takes care of the heavy lifting. It builds `weazlchat`, tucks it into `~/.weazlchat/bin`, and adds that directory to your shell `PATH` if it is not already present.
+On Windows, run the PowerShell installer:
 
-During setup, you will be prompted for your provider type and URL. The script queries the provider for available models, optionally takes your tool API keys, writes `~/.config/weazlchat/config.json`, and boots straight into the TUI.
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
+```
+
+The installer takes care of the heavy lifting. On Linux/macOS it builds `weazlchat`, tucks it into `~/.weazlchat/bin`, and adds that directory to your shell `PATH` if it is not already present. On Windows it installs to `%APPDATA%\weazlchat\bin`, adds that directory to your user `PATH`, and keeps config, build cache, history, workspace saves, and vault data under `%APPDATA%\weazlchat`.
+
+During setup, you will be prompted for your provider type and URL. The script queries the provider for available models, optionally takes your tool API keys, writes the platform config file, and boots straight into the TUI.
 
 Provider URL rules: base URLs only, please.
 
@@ -75,7 +84,15 @@ The install script also works on macOS-style shells:
 
 ### Windows
 
-Install Go for Windows, then install a C compiler that Go can use with CGO. MSYS2 works well:
+The first-class Windows installer can bootstrap the build dependencies with `winget`, build the app, add it to your user `PATH`, run setup, and launch WeazlChat:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
+```
+
+It installs the executable to `%APPDATA%\weazlchat\bin\weazlchat.exe`. Config and local history live under `%APPDATA%\weazlchat`, so Windows does not need Unix-style dot directories.
+
+If you want to install the dependencies yourself, install Go for Windows and a C compiler that Go can use with CGO. MSYS2 works well:
 
 1. Install MSYS2 from https://www.msys2.org/
 2. Open the MSYS2 UCRT64 shell.
@@ -122,7 +139,7 @@ Run setup first if you want the guided config flow:
 
 The status line at the bottom of the viewport gives you the vitals on your local inference. Alongside a Bubble Charm progress bar showing estimated context usage, you get token counts (`in` and `out`) and current generation speed in tokens per second (`t/s`).
 
-The provider's `context_window` lives in `~/.config/weazlchat/config.json`; it defaults to `32768` tokens, or whatever preset you chose during install.
+The provider's `context_window` lives in your platform config file; it defaults to `32768` tokens, or whatever preset you chose during install.
 
 Running out of room? Press `ctrl+t` to have the active model summarize the current conversation into a compact checkpoint. The summary target scales with your configured context window, bounded between 500 and 6000 tokens. Future requests send that checkpoint summary plus only the new messages, saving your hardware from replaying the entire session from the top.
 
@@ -140,7 +157,7 @@ Assistant responses are rendered with Glamour-powered Markdown once they land in
 
 Workspace saves are meant to feel like quick snapshots, not a filing chore. Press `ctrl+s` to save or update the current workspace view, then use `ctrl+r` or `ctrl+w` to open the picker. In the picker, saves are ordered by creation time but displayed as `workspace name: timestamp` so the useful part is first. Press `ctrl+e` from chat to create/rename the active workspace, or press `ctrl+e` in the picker to rename the selected save. Press `ctrl+d` in the picker to delete a workspace save from SQLite without deleting the underlying chat session.
 
-You can tune or disable Markdown rendering in `~/.config/weazlchat/config.json`:
+You can tune or disable Markdown rendering in your platform config file:
 
 ```json
 {
@@ -173,7 +190,7 @@ Important: tools only work with models that understand function/tool calling. If
 
 ### Enabling Tools
 
-The installer can write this section for you, but to edit it manually, update `~/.config/weazlchat/config.json`:
+The installer can write this section for you, but to edit it manually, update your platform config file:
 
 ```json
 {
