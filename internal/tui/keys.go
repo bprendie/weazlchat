@@ -35,6 +35,11 @@ func (m model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 			updated, cmd := m.toggleMouseMode()
 			return updated, cmd, true
 		}
+	case "ctrl+l":
+		if m.mode == modeChat && !m.thinking {
+			updated, cmd := m.startLLMConfig()
+			return updated, cmd, true
+		}
 	case "ctrl+r", "ctrl+w":
 		if m.mode == modeChat {
 			updated, cmd := m.showWorkspaces()
@@ -86,6 +91,10 @@ func (m model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		}
 		if m.mode == modeClearContext {
 			updated, cmd := m.cancelClearContext()
+			return updated, cmd, true
+		}
+		if m.isLLMConfigMode() {
+			updated, cmd := m.cancelLLMConfig()
 			return updated, cmd, true
 		}
 	case "enter":

@@ -27,6 +27,8 @@ func (m model) View() string {
 		body = m.renameWorkspaceView()
 	case modeClearContext:
 		body = m.clearContextView()
+	case modeLLMProvider, modeLLMServer, modeLLMLoading, modeLLMModel, modeLLMContext:
+		body = m.llmConfigView()
 	case modeSessions:
 		body = m.sessions.View()
 	case modeWorkspace:

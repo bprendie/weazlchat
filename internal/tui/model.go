@@ -28,6 +28,11 @@ const (
 	modeWorkspace
 	modeRenameWorkspace
 	modeClearContext
+	modeLLMProvider
+	modeLLMServer
+	modeLLMLoading
+	modeLLMModel
+	modeLLMContext
 )
 
 type model struct {
@@ -72,6 +77,20 @@ type model struct {
 	historyDraft        string
 	pendingTools        []llm.ToolCall
 	toolResults         []string
+	llmDraft            llmConfigDraft
+}
+
+type llmConfigDraft struct {
+	ProviderType  string
+	ServerURL     string
+	Model         string
+	ContextWindow int
+	ProviderIndex int
+	ModelIndex    int
+	ContextIndex  int
+	Models        []string
+	FetchErr      string
+	PreviousInput string
 }
 
 type streamEvent struct {
@@ -90,6 +109,11 @@ type contextTrimMsg struct {
 	throughID       int64
 	summary         string
 	err             error
+}
+
+type llmModelsMsg struct {
+	models []string
+	err    error
 }
 
 func New(cfg config.Config, cfgPath string, store *storage.Store, toolRegistry *tools.Registry) tea.Model {

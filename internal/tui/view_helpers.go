@@ -103,6 +103,15 @@ func (m model) helpText() string {
 	if m.mode == modeClearContext {
 		return "enter clear context | esc cancel | ctrl+c quit"
 	}
+	if m.isLLMConfigMode() {
+		if m.mode == modeLLMServer || (m.mode == modeLLMModel && (m.llmDraft.FetchErr != "" || len(m.llmDraft.Models) == 0)) {
+			return "enter continue | esc cancel | ctrl+c quit"
+		}
+		if m.mode == modeLLMLoading {
+			return "fetching models | esc cancel | ctrl+c quit"
+		}
+		return "up/down select | enter continue | esc cancel | ctrl+c quit"
+	}
 	if m.mode == modeSessions {
 		return "enter resume | ctrl+d delete session | esc back | ctrl+c quit"
 	}
@@ -117,7 +126,7 @@ func (m model) helpText() string {
 	if m.activeWorkspaceID != 0 {
 		renameHelp = " | ctrl+e rename"
 	}
-	return "enter send/select | wheel/pgup/pgdn scroll | " + mouseHelp + " | ctrl+n new | ctrl+t trim | ctrl+u clear | ctrl+r workspaces | ctrl+s save" + renameHelp + " | ctrl+c quit"
+	return "enter send/select | wheel/pgup/pgdn scroll | " + mouseHelp + " | ctrl+n new | ctrl+l llm | ctrl+t trim | ctrl+u clear | ctrl+r workspaces | ctrl+s save" + renameHelp + " | ctrl+c quit"
 }
 
 // inputView returns the input field view with paste indicator if applicable

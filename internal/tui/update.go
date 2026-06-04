@@ -22,6 +22,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 	case tea.KeyMsg:
+		if m.isLLMConfigMode() {
+			return m.handleLLMConfigKey(msg)
+		}
 		if m.mode == modeChat && !m.thinking {
 			if updated, cmd, handled := m.handleChatKey(msg); handled {
 				return updated, cmd
@@ -34,10 +37,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleStreamEvent(msg)
 	case contextTrimMsg:
 		return m.handleContextTrimMsg(msg)
+	case llmModelsMsg:
+		return m.handleLLMModelsMsg(msg)
 	case previousSessionMsg:
 		return m.handlePreviousSessionMsg(msg)
 	case spinner.TickMsg:
-		if m.thinking || m.mode == modeLoading {
+		if m.thinking || m.mode == modeLoading || m.mode == modeLLMLoading {
 			var cmd tea.Cmd
 			m.working, cmd = m.working.Update(msg)
 			if m.thinking {
