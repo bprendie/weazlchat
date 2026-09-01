@@ -49,7 +49,26 @@ type Tools struct {
 func Load() (Config, string, error) {
 	path := configPath()
 	cfg, err := LoadPath(path)
+	if err == nil {
+		err = applyVaultPathOverride(&cfg)
+	}
 	return cfg, path, err
+}
+
+func applyVaultPathOverride(cfg *Config) error {
+	path := os.Getenv("WEAZL_VAULT_PATH")
+	if path == "" {
+		return nil
+	}
+	path = filepath.Clean(path)
+	if !filepath.IsAbs(path) {
+		return errors.New("WEAZL_VAULT_PATH must be absolute")
+	}
+	if filepath.Ext(path) != ".db" {
+		return errors.New("WEAZL_VAULT_PATH must end in .db")
+	}
+	cfg.Database.Path = path
+	return nil
 }
 
 func LoadPath(path string) (Config, error) {

@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"strconv"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -28,6 +30,10 @@ func main() {
 
 	if err := store.Migrate(); err != nil {
 		fmt.Fprintf(os.Stderr, "database migration: %v\n", err)
+		os.Exit(1)
+	}
+	if err := unlockFromInheritedFD(store); err != nil {
+		fmt.Fprintf(os.Stderr, "vault handoff: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -63,4 +69,33 @@ func main() {
 		fmt.Fprintf(os.Stderr, "tui: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func unlockFromInheritedFD(store *storage.Store) error {
+	value := os.Getenv("WEAZL_VAULT_KEY_FD")
+	if value == "" {
+		return nil
+	}
+	_ = os.Unsetenv("WEAZL_VAULT_KEY_FD")
+	fd, err := strconv.Atoi(value)
+	if err != nil || fd < 3 {
+		return fmt.Errorf("invalid key descriptor")
+	}
+	file := os.NewFile(uintptr(fd), "vault-key")
+	if file == nil {
+		return fmt.Errorf("open key descriptor")
+	}
+	defer file.Close()
+	password, err := io.ReadAll(io.LimitReader(file, 64*1024))
+	if err != nil {
+		return err
+	}
+	if len(password) == 0 {
+		return fmt.Errorf("empty vault key")
+	}
+	err = store.Unlock(string(password))
+	for i := range password {
+		password[i] = 0
+	}
+	return err
 }

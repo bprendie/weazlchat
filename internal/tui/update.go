@@ -2,6 +2,7 @@ package tui
 
 import (
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -41,6 +42,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleLLMModelsMsg(msg)
 	case previousSessionMsg:
 		return m.handlePreviousSessionMsg(msg)
+	case vaultUnlockedMsg:
+		m.input.EchoMode = textinput.EchoNormal
+		m.input.Reset()
+		m.input.Placeholder = "message " + m.cfg.Active().Model
+		return m.startChat()
 	case spinner.TickMsg:
 		if m.thinking || m.mode == modeLoading || m.mode == modeLLMLoading {
 			var cmd tea.Cmd

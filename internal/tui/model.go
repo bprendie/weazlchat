@@ -111,6 +111,8 @@ type contextTrimMsg struct {
 	err             error
 }
 
+type vaultUnlockedMsg struct{}
+
 type llmModelsMsg struct {
 	models []string
 	err    error
@@ -197,6 +199,9 @@ func styleList(l *list.Model, s styles) {
 }
 
 func (m model) Init() tea.Cmd {
+	if m.store.Unlocked() {
+		return func() tea.Msg { return vaultUnlockedMsg{} }
+	}
 	has, err := m.store.HasVault()
 	if err != nil {
 		m.err = err.Error()
